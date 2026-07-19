@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
+import '../data/pumakatari_data.dart'; // ← NUEVO IMPORT
 import '../models/place.dart';
 import '../services/location_service.dart';
 import '../services/trip_planner_service.dart';
@@ -31,13 +32,13 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Place> _suggestions = [];
 
   /// Lugares conocidos que alimentan el buscador de texto y las sugerencias.
-  /// Combina los nombres de la Zona Piloto con las estaciones reales de
-  /// Teleférico, para que "escribir" encuentre resultados reales.
+  /// Ahora incluye: Teleférico + PumaKatari + lugares especiales.
   late final List<Place> _allPlaces = [
     TelefericoData.plazaAvaroa,
     TelefericoData.miraflores,
     TelefericoData.rioSeco,
     for (final line in TelefericoData.allLines) ...line.stations,
+    ...PumaKatariData.allStops, // ← AGREGADO: todas las paradas de Puma
   ];
 
   @override
@@ -195,8 +196,8 @@ class _HomeScreenState extends State<HomeScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Todavía no tenemos datos reales de ruta para "$_destinationLabel". '
-            'Por ahora prueba con "Plaza Avaroa" o "Sopocachi".',
+            'No encontramos una ruta para "$_destinationLabel". '
+            'Prueba con "Campo Verde", "Plaza Camacho" o "Plaza Avaroa".',
           ),
           duration: const Duration(seconds: 4),
         ),
@@ -292,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               if (match != null) _pickPlace(match);
                             },
                             decoration: InputDecoration(
-                              hintText: 'Ej: Plaza Avaroa, Miraflores...',
+                              hintText: 'Ej: Campo Verde, Plaza Camacho...',
                               prefixIcon: const Icon(Icons.search_rounded),
                               filled: true,
                               fillColor: const Color(0xFFF2F4F3),
@@ -389,4 +390,3 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 }
-
