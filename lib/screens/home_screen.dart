@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
-import '../data/pumakatari_data.dart'; // ← NUEVO IMPORT
+import '../data/pumakatari_data.dart';
 import '../models/place.dart';
+import '../models/transport_models.dart'; // ← IMPORTANTE: para TripPlan
 import '../services/location_service.dart';
 import '../services/trip_planner_service.dart';
 import '../services/voice_input_service.dart';
@@ -23,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _mapController = MapController();
   final _voiceService = VoiceInputService();
 
-  LatLng _origin = TelefericoData.rioSeco.location; // fallback hasta detectar GPS real
+  LatLng _origin = TelefericoData.rioSeco.location;
   LatLng? _destination;
   String _destinationLabel = '';
   bool _isLocating = true;
@@ -31,14 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isCalculatingRoute = false;
   List<Place> _suggestions = [];
 
-  /// Lugares conocidos que alimentan el buscador de texto y las sugerencias.
-  /// Ahora incluye: Teleférico + PumaKatari + lugares especiales.
   late final List<Place> _allPlaces = [
     TelefericoData.plazaAvaroa,
     TelefericoData.miraflores,
     TelefericoData.rioSeco,
     for (final line in TelefericoData.allLines) ...line.stations,
-    ...PumaKatariData.allStops, // ← AGREGADO: todas las paradas de Puma
+    ...PumaKatariData.allStops,
   ];
 
   @override
@@ -64,8 +63,6 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       _mapController.move(_origin, 14);
     } catch (_) {
-      // Si no hay permiso o GPS, seguimos con el fallback (Río Seco) para
-      // que la demo funcione igual.
       if (!mounted) return;
       setState(() => _isLocating = false);
     }
@@ -85,11 +82,6 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
-  /// Busca el mejor lugar conocido que coincida con el texto (escrito o
-  /// dictado por voz) y lo selecciona automáticamente. Antes, con la voz,
-  /// el texto quedaba escrito pero nunca se "confirmaba" como destino a
-  /// menos que tocaras una sugerencia - por eso "agregaba el destino pero
-  /// no calculaba". Ahora se resuelve solo.
   Place? _resolvePlaceFromText(String text) {
     final lower = text.trim().toLowerCase();
     if (lower.isEmpty) return null;
@@ -138,9 +130,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'El micrófono no está disponible. Revisa los permisos o escribe tu destino.',
-          ),
+          content: Text('El micrófono no está disponible. Revisa los permisos o escribe tu destino.'),
         ),
       );
       return;
@@ -155,9 +145,6 @@ class _HomeScreenState extends State<HomeScreen> {
         if (match != null) {
           _pickPlace(match);
         } else {
-          // No encontramos un lugar conocido: dejamos el texto tal cual
-          // para que "Calcular ruta" avise que todavía no hay datos para
-          // ese destino, en vez de quedarse pegado sin hacer nada.
           setState(() {
             _destinationLabel = text.trim();
             _destination = null;
@@ -169,8 +156,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _continue() async {
-    // Si el usuario escribió pero nunca tocó una sugerencia ni dictó por
-    // voz, intentamos resolver el texto actual antes de rendirnos.
     if (_destinationLabel.isEmpty) {
       final match = _resolvePlaceFromText(_destinationController.text);
       if (match != null) {
@@ -188,11 +173,16 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() => _isCalculatingRoute = true);
-    final plan = await TripPlannerService.planTrip(origin: _origin, destinationQuery: _destinationLabel);
+
+    final opciones = await TripPlannerService.planTripOptions(
+      origin: _origin,
+      destinationQuery: _destinationLabel,
+    );
+
     if (!mounted) return;
     setState(() => _isCalculatingRoute = false);
 
-    if (plan == null) {
+    if (opciones.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -205,8 +195,59 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
+    if (opciones.length == 1) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => TripPlanScreen(plan: opciones.first)),
+      );
+      return;
+    }
+
+    _showRouteOptionsDialog(context, opciones);
+  }
+
+  void _showRouteOptionsDialog(BuildContext context, List<TripPlan> opciones) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.6,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Elige tu ruta preferida',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selecciona una de las ${opciones.length} opciones disponibles',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: opciones.length,
+                  itemBuilder: (context, index) {
+                    final plan = opciones[index];
+                    return _RouteOptionCard(
+                      plan: plan,
+                      index: index + 1,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -387,6 +428,35 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
       },
+    );
+  }
+}
+
+class _RouteOptionCard extends StatelessWidget {
+  final TripPlan plan;
+  final int index;
+  final VoidCallback onTap;
+
+  const _RouteOptionCard({
+    required this.plan,
+    required this.index,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          child: Text('$index', style: const TextStyle(color: Colors.white)),
+        ),
+        title: Text('${plan.totalDurationMin} min · Bs. ${plan.totalFareBs.toStringAsFixed(2)}'),
+        subtitle: Text('${plan.segments.length} tramos'),
+        trailing: const Icon(Icons.chevron_right),
+        onTap: onTap,
+      ),
     );
   }
 }

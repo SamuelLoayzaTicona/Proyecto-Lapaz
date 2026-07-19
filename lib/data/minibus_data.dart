@@ -36,7 +36,7 @@ class MinibusData {
         Place(name: 'Plaza Avaroa', location: LatLng(-16.5080, -68.1230)),
       ],
       times: [0, 12, 18, 25, 28],
-      fare: 2.50,
+      fare: 3.50,
     ),
     // Ruta 2: Plaza Estudiante → Cota Cota (vía San Miguel, Calacoto)
     MinibusRoute(
@@ -50,7 +50,7 @@ class MinibusData {
         Place(name: 'Cota Cota Calle 14', location: LatLng(-16.5200, -68.0750)),
       ],
       times: [0, 10, 15, 20],
-      fare: 2.00,
+      fare: 3.50,
     ),
     // Ruta 3: Camacho → Lagunas de Hampaturi (vía San Pedro, Villa Fátima)
     MinibusRoute(
@@ -64,7 +64,7 @@ class MinibusData {
         Place(name: 'Lagunas de Hampaturi', location: LatLng(-16.4600, -68.1700)),
       ],
       times: [0, 8, 16, 28],
-      fare: 3.00,
+      fare: 4.00,
     ),
     // Ruta 4: Pérez → Hospital Materno Infantil (vía Camacho, La Portada)
     MinibusRoute(
@@ -78,7 +78,7 @@ class MinibusData {
         Place(name: 'Hospital Materno Infantil', location: LatLng(-16.4800, -68.1500)),
       ],
       times: [0, 6, 14, 20],
-      fare: 2.00,
+      fare: 4.00,
     ),
   ];
 
