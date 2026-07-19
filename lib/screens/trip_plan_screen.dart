@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/transport_models.dart';
+import '../services/trip_history_repository.dart';
 import '../widgets/route_step_card.dart';
 import 'live_trip_screen.dart';
 
@@ -42,7 +43,9 @@ class TripPlanScreen extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(16),
             child: ElevatedButton.icon(
-              onPressed: () {
+              onPressed: () async {
+                await TripHistoryRepository.instance.saveTrip(plan);
+                if (!context.mounted) return;
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => LiveTripScreen(plan: plan)),
                 );

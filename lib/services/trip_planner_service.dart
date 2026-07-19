@@ -2,6 +2,7 @@ import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
 import '../models/transport_models.dart';
 import 'geo_utils.dart';
+import 'routing_service.dart';
 
 /// Calcula el plan de viaje. A diferencia de la primera versión (que
 /// siempre mostraba el mismo viaje de ejemplo sin importar el destino),
@@ -14,17 +15,20 @@ import 'geo_utils.dart';
 /// topología real de Mi Teleférico (Línea Azul + Línea Roja) más el tramo
 /// final en minibús, que es como se haría este viaje en la vida real (no
 /// hay teleférico directo de Estación Central a Sopocachi).
+///
+/// Los tramos de caminata y minibús ahora siguen calles reales (vía
+/// RoutingService/OSRM). Los tramos de Teleférico se quedan en línea recta
+/// a propósito: así viaja un cable aéreo de verdad, no sigue calles.
 class TripPlannerService {
   TripPlannerService._();
 
-  static const double _walkingSpeedMetersPerMinute = 70; // ritmo urbano normal en La Paz (altura)
+  static const double _walkingSpeedMetersPerMinute = 70;
 
-  static TripPlan? planTrip({
+  static Future<TripPlan?> planTrip({
     required LatLng origin,
     required String destinationQuery,
-  }) {
+  }) async {
     final query = destinationQuery.toLowerCase();
-
     final wantsAvaroa = query.contains('avaroa') || query.contains('sopocachi');
 
     if (wantsAvaroa) {
@@ -34,14 +38,18 @@ class TripPlannerService {
     return null;
   }
 
-  static TripPlan _riosecoToPlazaAvaroa(LatLng origin) {
+  static Future<TripPlan> _riosecoToPlazaAvaroa(LatLng origin) async {
     final segments = <RouteSegment>[];
 
-    // 1. Caminata real desde el origen (GPS del usuario) hasta la estación
-    //    Río Seco de la Línea Azul. La distancia se calcula de verdad con
-    //    la posición GPS que llega, no está inventada.
+    // 1. Caminata real (por calles) desde el origen (GPS del usuario)
+    //    hasta la estación Río Seco de la Línea Azul.
     final stationRioSeco = TelefericoData.azul.stations.first;
-    final walkToStationMeters = GeoUtils.distanceMeters(origin, stationRioSeco.location);
+    final walkToStationPoints = await RoutingService.fetchRoute(
+      start: origin,
+      end: stationRioSeco.location,
+      profile: 'foot',
+    );
+    final walkToStationMeters = _routeLengthMeters(walkToStationPoints);
     final walkToStationMin = (walkToStationMeters / _walkingSpeedMetersPerMinute).ceil().clamp(1, 60);
 
     segments.add(RouteSegment(
@@ -53,11 +61,11 @@ class TripPlannerService {
       durationMin: walkToStationMin,
       fromStop: 'Tu ubicación',
       toStop: stationRioSeco.name,
-      geoPoints: [origin, stationRioSeco.location],
+      geoPoints: walkToStationPoints,
     ));
 
-    // 2. Línea Azul completa: Río Seco -> 16 de Julio (datos reales de
-    //    Mi Teleférico: 5 estaciones, ~20 min).
+    // 2. Línea Azul completa: Río Seco -> 16 de Julio. Línea recta a
+    //    propósito (cable aéreo real, no sigue calles).
     segments.add(RouteSegment(
       mode: TransportMode.teleferico,
       title: 'Teleférico · Línea Azul',
@@ -71,8 +79,7 @@ class TripPlannerService {
       geoPoints: TelefericoData.azul.stations.map((s) => s.location).toList(),
     ));
 
-    // 3. Línea Roja: 16 de Julio -> Estación Central (datos reales:
-    //    3 estaciones, ~11 min).
+    // 3. Línea Roja: 16 de Julio -> Estación Central. También recta.
     segments.add(RouteSegment(
       mode: TransportMode.teleferico,
       title: 'Teleférico · Línea Roja',
@@ -85,15 +92,19 @@ class TripPlannerService {
       geoPoints: TelefericoData.roja.stations.map((s) => s.location).toList(),
     ));
 
-    // 4. Minibús: no existe teleférico directo de Estación Central a
-    //    Sopocachi, así que el tramo final real es en minibús por el eje
-    //    Av. 6 de Agosto / Av. Arce (corredor real que sí conecta el
-    //    centro con Sopocachi).
+    // 4. Minibús real por calles (Estación Central -> cerca de Sopocachi).
     final estacionCentral = TelefericoData.roja.stations.last.location;
     final paradaSopocachi = LatLng(
       TelefericoData.plazaAvaroa.location.latitude + 0.0015,
       TelefericoData.plazaAvaroa.location.longitude - 0.0010,
     );
+    final minibusPoints = await RoutingService.fetchRoute(
+      start: estacionCentral,
+      end: paradaSopocachi,
+      profile: 'driving',
+    );
+    final minibusMeters = _routeLengthMeters(minibusPoints);
+    final minibusMin = (minibusMeters / 300).ceil().clamp(5, 40); // ritmo urbano con tráfico
 
     segments.add(RouteSegment(
       mode: TransportMode.minibus,
@@ -102,16 +113,20 @@ class TripPlannerService {
       instruction: 'Toma un minibús con destino Sopocachi por la Av. 6 de Agosto / Av. Arce. '
           'Bájate cerca de la Plaza Avaroa.',
       fareBs: 2.5,
-      durationMin: 12,
+      durationMin: minibusMin,
       fromStop: 'Estación Central',
       toStop: 'Parada Sopocachi',
-      geoPoints: [estacionCentral, paradaSopocachi],
+      geoPoints: minibusPoints,
       syndicate: 'Confirmar sindicato local en la zona piloto',
     ));
 
-    // 5. Caminata final hasta Plaza Avaroa.
-    final walkFinalMeters =
-        GeoUtils.distanceMeters(paradaSopocachi, TelefericoData.plazaAvaroa.location);
+    // 5. Caminata final real por calles hasta Plaza Avaroa.
+    final walkFinalPoints = await RoutingService.fetchRoute(
+      start: paradaSopocachi,
+      end: TelefericoData.plazaAvaroa.location,
+      profile: 'foot',
+    );
+    final walkFinalMeters = _routeLengthMeters(walkFinalPoints);
     final walkFinalMin = (walkFinalMeters / _walkingSpeedMetersPerMinute).ceil().clamp(1, 30);
 
     segments.add(RouteSegment(
@@ -123,7 +138,7 @@ class TripPlannerService {
       durationMin: walkFinalMin,
       fromStop: 'Parada Sopocachi',
       toStop: 'Plaza Avaroa',
-      geoPoints: [paradaSopocachi, TelefericoData.plazaAvaroa.location],
+      geoPoints: walkFinalPoints,
     ));
 
     return TripPlan(
@@ -131,5 +146,13 @@ class TripPlannerService {
       destination: 'Plaza Avaroa',
       segments: segments,
     );
+  }
+
+  static double _routeLengthMeters(List<LatLng> points) {
+    double total = 0;
+    for (var i = 0; i < points.length - 1; i++) {
+      total += GeoUtils.distanceMeters(points[i], points[i + 1]);
+    }
+    return total;
   }
 }

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1091563515498",
+    "project_id": "urbanizacion-lp",
+    "storage_bucket": "urbanizacion-lp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1091563515498:android:f8b8e0451e5d40aea92413",
+        "android_client_info": {
+          "package_name": "com.example.flutter_proyecto_lapaz"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_wVc_SMyBcp4w4h8WrT__Q7SEAmEz9Gg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../data/pilot_zone_data.dart';
 import '../models/transport_models.dart';
+import '../services/report_repository.dart';
 
 class ReportScreen extends StatefulWidget {
   final String? prefilledSyndicate;
@@ -14,9 +15,7 @@ class _ReportScreenState extends State<ReportScreen> {
   String? _selectedSyndicate;
   final _plateController = TextEditingController();
   final _descriptionController = TextEditingController();
-
-  // Almacenamiento en memoria para la demo (sin backend todavía).
-  static final List<TrameajeReport> _localReports = [];
+  bool _isSubmitting = false;
 
   @override
   void initState() {
@@ -31,25 +30,40 @@ class _ReportScreenState extends State<ReportScreen> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (_descriptionController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Describe brevemente lo que pasó.')),
       );
       return;
     }
-    setState(() {
-      _localReports.add(TrameajeReport(
-        syndicate: _selectedSyndicate ?? 'Desconocido',
-        plate: _plateController.text.trim(),
-        description: _descriptionController.text.trim(),
-        reportedAt: DateTime.now(),
-      ));
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Gracias. Tu reporte ayuda a ordenar el transporte.')),
-    );
-    Navigator.of(context).pop();
+
+    setState(() => _isSubmitting = true);
+    try {
+      await ReportRepository.instance.submitReport(
+        TrameajeReport(
+          syndicate: _selectedSyndicate ?? 'Desconocido',
+          plate: _plateController.text.trim(),
+          description: _descriptionController.text.trim(),
+          reportedAt: DateTime.now(),
+        ),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Tu reporte ha sido recibido. La unidad de transparencia lo revisará en 48 horas.'),
+        ),
+      );
+      _plateController.clear();
+      _descriptionController.clear();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('No se pudo enviar el reporte: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
   }
 
   @override
@@ -62,7 +76,7 @@ class _ReportScreenState extends State<ReportScreen> {
           children: [
             const Text(
               'Ayúdanos a identificar minibuses que no cumplen su ruta o tarifa autorizada. '
-              'Tu reporte queda anónimo para la Alcaldía.',
+              'Tu reporte queda guardado y visible para el seguimiento de la Alcaldía.',
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
@@ -89,30 +103,81 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: _submit,
-              icon: const Icon(Icons.send_rounded),
-              label: const Text('Enviar reporte'),
+              onPressed: _isSubmitting ? null : _submit,
+              icon: _isSubmitting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.send_rounded),
+              label: Text(_isSubmitting ? 'Enviando...' : 'Enviar reporte'),
             ),
-            if (_localReports.isNotEmpty) ...[
-              const SizedBox(height: 24),
-              Text(
-                'Reportes en esta sesión (${_localReports.length})',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
-              const SizedBox(height: 8),
-              ..._localReports.reversed.map(
-                (r) => Card(
-                  child: ListTile(
-                    title: Text(r.syndicate),
-                    subtitle: Text(r.description),
-                    trailing: Text(
-                      '${r.reportedAt.hour}:${r.reportedAt.minute.toString().padLeft(2, '0')}',
+            const SizedBox(height: 24),
+            Text('Reportes recientes', style: Theme.of(context).textTheme.titleSmall),
+            const SizedBox(height: 8),
+            StreamBuilder<List<TrameajeReport>>(
+              stream: ReportRepository.instance.watchReports(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(child: CircularProgressIndicator()),
+                  );
+                }
+                if (snapshot.hasError) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Text(
+                      'No se pudieron cargar los reportes. Revisa tu conexión a Firebase.\n${snapshot.error}',
+                      style: const TextStyle(color: Colors.red, fontSize: 12),
                     ),
-                  ),
-                ),
-              ),
-            ],
+                  );
+                }
+                final reports = snapshot.data ?? [];
+                if (reports.isEmpty) {
+                  return const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Text('Todavía no hay reportes.', style: TextStyle(color: Colors.black54)),
+                  );
+                }
+                return Column(
+                  children: reports.map((r) => _ReportTile(report: r)).toList(),
+                );
+              },
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReportTile extends StatelessWidget {
+  final TrameajeReport report;
+  const _ReportTile({required this.report});
+
+  Color _statusColor(String status) {
+    switch (status) {
+      case 'En revisión':
+        return Colors.orange;
+      case 'Atendido':
+        return Colors.green;
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        title: Text(report.syndicate),
+        subtitle: Text(report.description),
+        trailing: Chip(
+          label: Text(report.status, style: const TextStyle(fontSize: 11, color: Colors.white)),
+          backgroundColor: _statusColor(report.status),
+          padding: EdgeInsets.zero,
         ),
       ),
     );

@@ -188,9 +188,12 @@ class _LiveTripScreenState extends State<LiveTripScreen> {
               ),
               const SizedBox(height: 16),
               ElevatedButton(
-                onPressed: () {
-                  EmergencyContactState.name.value = nameController.text.trim();
-                  EmergencyContactState.phone.value = phoneController.text.trim();
+                onPressed: () async {
+                  await EmergencyContactState.save(
+                    contactName: nameController.text.trim(),
+                    contactPhone: phoneController.text.trim(),
+                  );
+                  if (!context.mounted) return;
                   Navigator.of(context).pop();
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('Contacto de emergencia guardado.')),

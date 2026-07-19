@@ -27,6 +27,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _destinationLabel = '';
   bool _isLocating = true;
   bool _isListening = false;
+  bool _isCalculatingRoute = false;
   List<Place> _suggestions = [];
 
   /// Lugares conocidos que alimentan el buscador de texto y las sugerencias.
@@ -166,7 +167,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _continue() {
+  Future<void> _continue() async {
     // Si el usuario escribió pero nunca tocó una sugerencia ni dictó por
     // voz, intentamos resolver el texto actual antes de rendirnos.
     if (_destinationLabel.isEmpty) {
@@ -185,7 +186,10 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final plan = TripPlannerService.planTrip(origin: _origin, destinationQuery: _destinationLabel);
+    setState(() => _isCalculatingRoute = true);
+    final plan = await TripPlannerService.planTrip(origin: _origin, destinationQuery: _destinationLabel);
+    if (!mounted) return;
+    setState(() => _isCalculatingRoute = false);
 
     if (plan == null) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -331,9 +335,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      onPressed: _continue,
-                      icon: const Icon(Icons.route_rounded),
-                      label: const Text('Calcular ruta'),
+                      onPressed: _isCalculatingRoute ? null : _continue,
+                      icon: _isCalculatingRoute
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.route_rounded),
+                      label: Text(_isCalculatingRoute ? 'Calculando por calles reales...' : 'Calcular ruta'),
                     ),
                   ],
                 ),
