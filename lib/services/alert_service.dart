@@ -1,11 +1,10 @@
 import 'package:url_launcher/url_launcher.dart';
 import 'package:latlong2/latlong.dart';
 
-/// Envía la alerta real de "Modo Seguro" abriendo WhatsApp con un mensaje
-/// pre-armado (incluye la ubicación en un link de Google Maps) hacia el
-/// número de emergencia registrado. No necesita backend ni API de SMS: usa
-/// el link oficial de WhatsApp (wa.me), que si el contacto tiene WhatsApp
-/// instalado, abre la conversación lista para enviar.
+/// Envía la alerta real de "Modo Seguro" al contacto de emergencia. Intenta
+/// primero el esquema directo de la app de WhatsApp (whatsapp://), que es
+/// más confiable en Android que el link web, y si no está disponible cae
+/// al link web (wa.me), que funciona igual pasando por el navegador.
 class AlertService {
   AlertService._();
 
@@ -17,13 +16,36 @@ class AlertService {
         'https://maps.google.com/?q=${currentPosition.latitude},${currentPosition.longitude}';
     final message = '🚨 AYUDA. El transporte en el que viajo se desvió de la ruta '
         'planificada. Esta es mi ubicación actual: $mapsLink';
+    final encodedMessage = Uri.encodeComponent(message);
+    final cleanPhone = _normalizePhone(phone);
 
-    final cleanPhone = phone.replaceAll(RegExp(r'[^0-9]'), '');
-    final uri = Uri.parse('https://wa.me/$cleanPhone?text=${Uri.encodeComponent(message)}');
-
-    if (await canLaunchUrl(uri)) {
-      return launchUrl(uri, mode: LaunchMode.externalApplication);
+    // Intento 1: esquema directo de la app WhatsApp.
+    final appUri = Uri.parse('whatsapp://send?phone=$cleanPhone&text=$encodedMessage');
+    if (await canLaunchUrl(appUri)) {
+      final launched = await launchUrl(appUri, mode: LaunchMode.externalApplication);
+      if (launched) return true;
     }
+
+    // Intento 2: link web (wa.me), funciona aunque el esquema anterior falle.
+    final webUri = Uri.parse('https://wa.me/$cleanPhone?text=$encodedMessage');
+    if (await canLaunchUrl(webUri)) {
+      return launchUrl(webUri, mode: LaunchMode.externalApplication);
+    }
+
     return false;
+  }
+
+  /// Limpia el número y, si parece un número boliviano local (8 dígitos,
+  /// empieza con 6 o 7, sin código de país), le agrega el 591 automático.
+  /// wa.me EXIGE el código de país - sin él, el link simplemente no abre
+  /// ninguna conversación válida.
+  static String _normalizePhone(String phone) {
+    var digits = phone.replaceAll(RegExp(r'[^0-9]'), '');
+    final looksLocalBolivian =
+        digits.length == 8 && (digits.startsWith('6') || digits.startsWith('7'));
+    if (looksLocalBolivian) {
+      digits = '591$digits';
+    }
+    return digits;
   }
 }

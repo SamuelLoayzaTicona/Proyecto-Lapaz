@@ -1,150 +1,190 @@
 import 'package:latlong2/latlong.dart';
-import '../data/teleferico_data.dart';
+import '../models/place.dart';
 import '../models/transport_models.dart';
 import 'geo_utils.dart';
 import 'routing_service.dart';
+import 'teleferico_network.dart';
 
-/// Calcula el plan de viaje. A diferencia de la primera versión (que
-/// siempre mostraba el mismo viaje de ejemplo sin importar el destino),
-/// este servicio solo devuelve un plan cuando REALMENTE tiene datos
-/// verificados para esa combinación origen/destino. Si no los tiene,
-/// devuelve null y la pantalla debe avisar al usuario en vez de mostrar
-/// algo inventado.
+/// Calcula un plan de viaje entre CUALQUIER origen y destino que tengan
+/// coordenadas (ya sea porque el usuario tocó el mapa, eligió un lugar
+/// conocido, o escribió una dirección que encontramos por búsqueda).
 ///
-/// Por ahora cubre la ruta Río Seco -> Plaza Avaroa / Sopocachi usando la
-/// topología real de Mi Teleférico (Línea Azul + Línea Roja) más el tramo
-/// final en minibús, que es como se haría este viaje en la vida real (no
-/// hay teleférico directo de Estación Central a Sopocachi).
-///
-/// Los tramos de caminata y minibús ahora siguen calles reales (vía
-/// RoutingService/OSRM). Los tramos de Teleférico se quedan en línea recta
-/// a propósito: así viaja un cable aéreo de verdad, no sigue calles.
+/// No son datos "inventados": la ruta usa la red real de Mi Teleférico
+/// (líneas, estaciones y duraciones reales) más ruteo real por calles para
+/// los tramos de caminata/minibús (vía OSRM). Eso sí, como la red de
+/// Teleférico solo cubre ciertas zonas, para destinos lejos de cualquier
+/// estación esto es una aproximación razonable, no una réplica exacta de
+/// cómo se movería alguien - eso se puede seguir afinando con más datos.
 class TripPlannerService {
   TripPlannerService._();
 
   static const double _walkingSpeedMetersPerMinute = 70;
 
+  /// Si caminar hasta la estación más cercana (en cualquiera de los dos
+  /// extremos) tomaría más de esto, mejor no forzar el Teleférico: se arma
+  /// un viaje directo en minibús/caminata en su lugar.
+  static const double _maxWalkToStationMeters = 1800;
+
   static Future<TripPlan?> planTrip({
     required LatLng origin,
-    required String destinationQuery,
+    required LatLng destination,
+    required String destinationLabel,
   }) async {
-    final query = destinationQuery.toLowerCase();
-    final wantsAvaroa = query.contains('avaroa') || query.contains('sopocachi');
+    final distanceToNearestFromOrigin = TelefericoNetwork.distanceToNearestStation(origin);
+    final distanceToNearestFromDestination = TelefericoNetwork.distanceToNearestStation(destination);
 
-    if (wantsAvaroa) {
-      return _riosecoToPlazaAvaroa(origin);
+    final telefericoViable = distanceToNearestFromOrigin <= _maxWalkToStationMeters &&
+        distanceToNearestFromDestination <= _maxWalkToStationMeters;
+
+    if (telefericoViable) {
+      final plan = await _planViaTeleferico(origin, destination, destinationLabel);
+      if (plan != null) return plan;
     }
 
-    return null;
+    // Sin Teleférico cerca de alguno de los dos extremos: viaje directo en
+    // minibús (o caminando, si la distancia es corta) por calles reales.
+    return _planDirectTrip(origin, destination, destinationLabel);
   }
 
-  static Future<TripPlan> _riosecoToPlazaAvaroa(LatLng origin) async {
+  static Future<TripPlan?> _planViaTeleferico(
+    LatLng origin,
+    LatLng destination,
+    String destinationLabel,
+  ) async {
+    final entryStation = TelefericoNetwork.nearestStation(origin);
+    final exitStation = TelefericoNetwork.nearestStation(destination);
+
     final segments = <RouteSegment>[];
 
-    // 1. Caminata real (por calles) desde el origen (GPS del usuario)
-    //    hasta la estación Río Seco de la Línea Azul.
-    final stationRioSeco = TelefericoData.azul.stations.first;
-    final walkToStationPoints = await RoutingService.fetchRoute(
-      start: origin,
-      end: stationRioSeco.location,
-      profile: 'foot',
-    );
-    final walkToStationMeters = _routeLengthMeters(walkToStationPoints);
-    final walkToStationMin = (walkToStationMeters / _walkingSpeedMetersPerMinute).ceil().clamp(1, 60);
+    if (entryStation.name != exitStation.name) {
+      final path = TelefericoNetwork.findPath(entryStation.name, exitStation.name);
+      if (path == null) return null; // no debería pasar, pero por seguridad
 
-    segments.add(RouteSegment(
+      // Caminata real hasta la primera estación.
+      segments.add(await _walkSegment(
+        from: origin,
+        to: entryStation.location,
+        title: 'Camina a la estación',
+        toStopName: entryStation.name,
+        fromStopName: 'Tu ubicación',
+      ));
+
+      // Un tramo de Teleférico por cada línea que se usa (rectos a
+      // propósito: así viaja un cable aéreo real).
+      for (final step in path) {
+        segments.add(RouteSegment(
+          mode: TransportMode.teleferico,
+          title: 'Teleférico · ${step.line.name}',
+          subtitle: 'Bs. 3.00 · hasta ${step.stations.last.name}',
+          instruction: 'Aborda la ${step.line.name} desde ${step.stations.first.name} '
+              'hasta ${step.stations.last.name}.',
+          fareBs: 3.0,
+          durationMin: (step.line.durationMin * (step.stations.length - 1) /
+                  (step.line.stations.length - 1))
+              .ceil()
+              .clamp(2, step.line.durationMin),
+          fromStop: step.stations.first.name,
+          toStop: step.stations.last.name,
+          geoPoints: step.stations.map((s) => s.location).toList(),
+        ));
+      }
+    }
+
+    // Último tramo: de la estación de salida al destino real. Si está
+    // cerca, caminando; si está algo lejos, en minibús por calles reales.
+    final lastLegMeters = GeoUtils.distanceMeters(exitStation.location, destination);
+    if (lastLegMeters > 700) {
+      segments.add(await _minibusSegment(
+        from: exitStation.location,
+        to: destination,
+        fromStopName: exitStation.name,
+        toStopName: destinationLabel,
+      ));
+    } else {
+      segments.add(await _walkSegment(
+        from: exitStation.location,
+        to: destination,
+        title: 'Camina a tu destino',
+        fromStopName: exitStation.name,
+        toStopName: destinationLabel,
+      ));
+    }
+
+    return TripPlan(origin: 'Tu ubicación', destination: destinationLabel, segments: segments);
+  }
+
+  static Future<TripPlan> _planDirectTrip(
+    LatLng origin,
+    LatLng destination,
+    String destinationLabel,
+  ) async {
+    final distanceMeters = GeoUtils.distanceMeters(origin, destination);
+    final segments = <RouteSegment>[];
+
+    if (distanceMeters <= 900) {
+      segments.add(await _walkSegment(
+        from: origin,
+        to: destination,
+        title: 'Camina a tu destino',
+        fromStopName: 'Tu ubicación',
+        toStopName: destinationLabel,
+      ));
+    } else {
+      segments.add(await _minibusSegment(
+        from: origin,
+        to: destination,
+        fromStopName: 'Tu ubicación',
+        toStopName: destinationLabel,
+      ));
+    }
+
+    return TripPlan(origin: 'Tu ubicación', destination: destinationLabel, segments: segments);
+  }
+
+  static Future<RouteSegment> _walkSegment({
+    required LatLng from,
+    required LatLng to,
+    required String title,
+    required String fromStopName,
+    required String toStopName,
+  }) async {
+    final points = await RoutingService.fetchRoute(start: from, end: to, profile: 'foot');
+    final meters = _routeLengthMeters(points);
+    final min = (meters / _walkingSpeedMetersPerMinute).ceil().clamp(1, 60);
+    return RouteSegment(
       mode: TransportMode.walk,
-      title: 'Camina a la estación',
-      subtitle: '${walkToStationMeters.round()} m · Estación Río Seco',
-      instruction: 'Camina hasta la Estación Río Seco de la Línea Azul del Teleférico.',
+      title: title,
+      subtitle: '${meters.round()} m',
+      instruction: 'Camina desde $fromStopName hasta $toStopName.',
       fareBs: 0,
-      durationMin: walkToStationMin,
-      fromStop: 'Tu ubicación',
-      toStop: stationRioSeco.name,
-      geoPoints: walkToStationPoints,
-    ));
-
-    // 2. Línea Azul completa: Río Seco -> 16 de Julio. Línea recta a
-    //    propósito (cable aéreo real, no sigue calles).
-    segments.add(RouteSegment(
-      mode: TransportMode.teleferico,
-      title: 'Teleférico · Línea Azul',
-      subtitle: 'Bs. 3.00 · hasta Estación 16 de Julio',
-      instruction: 'Aborda la Línea Azul y viaja hasta la Estación 16 de Julio, '
-          'donde conecta con la Línea Roja.',
-      fareBs: 3.0,
-      durationMin: TelefericoData.azul.durationMin,
-      fromStop: TelefericoData.azul.stations.first.name,
-      toStop: TelefericoData.azul.stations.last.name,
-      geoPoints: TelefericoData.azul.stations.map((s) => s.location).toList(),
-    ));
-
-    // 3. Línea Roja: 16 de Julio -> Estación Central. También recta.
-    segments.add(RouteSegment(
-      mode: TransportMode.teleferico,
-      title: 'Teleférico · Línea Roja',
-      subtitle: 'Bs. 3.00 · hasta Estación Central',
-      instruction: 'Baja en 16 de Julio y toma la Línea Roja hasta la Estación Central.',
-      fareBs: 3.0,
-      durationMin: TelefericoData.roja.durationMin,
-      fromStop: TelefericoData.roja.stations.first.name,
-      toStop: TelefericoData.roja.stations.last.name,
-      geoPoints: TelefericoData.roja.stations.map((s) => s.location).toList(),
-    ));
-
-    // 4. Minibús real por calles (Estación Central -> cerca de Sopocachi).
-    final estacionCentral = TelefericoData.roja.stations.last.location;
-    final paradaSopocachi = LatLng(
-      TelefericoData.plazaAvaroa.location.latitude + 0.0015,
-      TelefericoData.plazaAvaroa.location.longitude - 0.0010,
+      durationMin: min,
+      fromStop: fromStopName,
+      toStop: toStopName,
+      geoPoints: points,
     );
-    final minibusPoints = await RoutingService.fetchRoute(
-      start: estacionCentral,
-      end: paradaSopocachi,
-      profile: 'driving',
-    );
-    final minibusMeters = _routeLengthMeters(minibusPoints);
-    final minibusMin = (minibusMeters / 300).ceil().clamp(5, 40); // ritmo urbano con tráfico
+  }
 
-    segments.add(RouteSegment(
+  static Future<RouteSegment> _minibusSegment({
+    required LatLng from,
+    required LatLng to,
+    required String fromStopName,
+    required String toStopName,
+  }) async {
+    final points = await RoutingService.fetchRoute(start: from, end: to, profile: 'driving');
+    final meters = _routeLengthMeters(points);
+    final min = (meters / 300).ceil().clamp(5, 60);
+    return RouteSegment(
       mode: TransportMode.minibus,
-      title: 'Minibús · eje Av. 6 de Agosto',
-      subtitle: 'Bs. 2.50 · hacia Sopocachi',
-      instruction: 'Toma un minibús con destino Sopocachi por la Av. 6 de Agosto / Av. Arce. '
-          'Bájate cerca de la Plaza Avaroa.',
+      title: 'Minibús',
+      subtitle: 'Bs. 2.50 (referencial) · hacia $toStopName',
+      instruction: 'Toma un minibús con destino a $toStopName. '
+          'La tarifa y el sindicato exacto todavía no están verificados para esta zona.',
       fareBs: 2.5,
-      durationMin: minibusMin,
-      fromStop: 'Estación Central',
-      toStop: 'Parada Sopocachi',
-      geoPoints: minibusPoints,
-      syndicate: 'Confirmar sindicato local en la zona piloto',
-    ));
-
-    // 5. Caminata final real por calles hasta Plaza Avaroa.
-    final walkFinalPoints = await RoutingService.fetchRoute(
-      start: paradaSopocachi,
-      end: TelefericoData.plazaAvaroa.location,
-      profile: 'foot',
-    );
-    final walkFinalMeters = _routeLengthMeters(walkFinalPoints);
-    final walkFinalMin = (walkFinalMeters / _walkingSpeedMetersPerMinute).ceil().clamp(1, 30);
-
-    segments.add(RouteSegment(
-      mode: TransportMode.walk,
-      title: 'Camina a tu destino',
-      subtitle: '${walkFinalMeters.round()} m · Plaza Avaroa',
-      instruction: 'Camina los últimos metros hasta la Plaza Avaroa.',
-      fareBs: 0,
-      durationMin: walkFinalMin,
-      fromStop: 'Parada Sopocachi',
-      toStop: 'Plaza Avaroa',
-      geoPoints: walkFinalPoints,
-    ));
-
-    return TripPlan(
-      origin: 'Tu ubicación',
-      destination: 'Plaza Avaroa',
-      segments: segments,
+      durationMin: min,
+      fromStop: fromStopName,
+      toStop: toStopName,
+      geoPoints: points,
+      syndicate: 'Por confirmar',
     );
   }
 

@@ -4,6 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
 import '../models/place.dart';
 import '../services/location_service.dart';
+import '../services/place_search_service.dart';
 import '../services/trip_planner_service.dart';
 import '../services/voice_input_service.dart';
 import '../state/app_settings.dart';
@@ -76,12 +77,27 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
     final lower = query.toLowerCase();
-    setState(() {
-      _suggestions = _allPlaces
-          .where((p) => p.name.toLowerCase().contains(lower))
-          .take(5)
-          .toList();
-    });
+    final localMatches =
+        _allPlaces.where((p) => p.name.toLowerCase().contains(lower)).take(5).toList();
+    setState(() => _suggestions = localMatches);
+
+    // Si no hay coincidencias locales, buscamos direcciones reales
+    // (Nominatim/OpenStreetMap) para que cualquier dirección funcione, no
+    // solo los lugares de nuestra lista fija.
+    if (localMatches.isEmpty && query.trim().length >= 3) {
+      _searchRemotePlaces(query);
+    }
+  }
+
+  int _searchRequestId = 0;
+
+  Future<void> _searchRemotePlaces(String query) async {
+    final requestId = ++_searchRequestId;
+    final results = await PlaceSearchService.search(query);
+    // Si el usuario ya escribió algo más nuevo mientras esperábamos la
+    // respuesta, descartamos este resultado desactualizado.
+    if (!mounted || requestId != _searchRequestId) return;
+    setState(() => _suggestions = results);
   }
 
   /// Busca el mejor lugar conocido que coincida con el texto (escrito o
@@ -146,17 +162,21 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     setState(() => _isListening = true);
     await _voiceService.startListening(
-      onResult: (text) {
+      onResult: (text) async {
         setState(() => _isListening = false);
         if (text.trim().isEmpty) return;
         _destinationController.text = text;
         final match = _resolvePlaceFromText(text);
         if (match != null) {
           _pickPlace(match);
+          return;
+        }
+        // No es un lugar conocido de la lista: buscamos la dirección real.
+        final remoteResults = await PlaceSearchService.search(text);
+        if (!mounted) return;
+        if (remoteResults.isNotEmpty) {
+          _pickPlace(remoteResults.first);
         } else {
-          // No encontramos un lugar conocido: dejamos el texto tal cual
-          // para que "Calcular ruta" avise que todavía no hay datos para
-          // ese destino, en vez de quedarse pegado sin hacer nada.
           setState(() {
             _destinationLabel = text.trim();
             _destination = null;
@@ -170,16 +190,28 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _continue() async {
     // Si el usuario escribió pero nunca tocó una sugerencia ni dictó por
     // voz, intentamos resolver el texto actual antes de rendirnos.
-    if (_destinationLabel.isEmpty) {
-      final match = _resolvePlaceFromText(_destinationController.text);
+    if (_destination == null) {
+      final typed = _destinationController.text.trim();
+      final match = _resolvePlaceFromText(typed);
       if (match != null) {
         _pickPlace(match);
-      } else if (_destinationController.text.trim().isNotEmpty) {
-        _destinationLabel = _destinationController.text.trim();
+      } else if (typed.isNotEmpty) {
+        setState(() => _isCalculatingRoute = true);
+        final remoteResults = await PlaceSearchService.search(typed);
+        if (!mounted) return;
+        if (remoteResults.isNotEmpty) {
+          _pickPlace(remoteResults.first);
+        } else {
+          setState(() => _isCalculatingRoute = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('No pudimos encontrar "$typed". Intenta con otro nombre o toca el mapa.')),
+          );
+          return;
+        }
       }
     }
 
-    if (_destinationLabel.isEmpty) {
+    if (_destination == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Elige un destino: escribe, usa el micrófono o toca el mapa.')),
       );
@@ -187,19 +219,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     setState(() => _isCalculatingRoute = true);
-    final plan = await TripPlannerService.planTrip(origin: _origin, destinationQuery: _destinationLabel);
+    final plan = await TripPlannerService.planTrip(
+      origin: _origin,
+      destination: _destination!,
+      destinationLabel: _destinationLabel,
+    );
     if (!mounted) return;
     setState(() => _isCalculatingRoute = false);
 
     if (plan == null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Todavía no tenemos datos reales de ruta para "$_destinationLabel". '
-            'Por ahora prueba con "Plaza Avaroa" o "Sopocachi".',
-          ),
-          duration: const Duration(seconds: 4),
-        ),
+        const SnackBar(content: Text('No pudimos calcular una ruta para ese destino. Intenta con otro punto.')),
       );
       return;
     }

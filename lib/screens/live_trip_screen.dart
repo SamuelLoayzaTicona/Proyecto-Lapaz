@@ -322,7 +322,12 @@ class _LiveTripScreenState extends State<LiveTripScreen> {
               center: displayPosition ?? _routePoints.first,
               showTelefericoNetwork: false,
               extraPolylines: [
-                Polyline(points: _routePoints, color: Colors.blueAccent, strokeWidth: 5),
+                for (final segment in widget.plan.segments)
+                  Polyline(
+                    points: segment.geoPoints,
+                    color: segment.mode.color,
+                    strokeWidth: segment.mode == TransportMode.teleferico ? 4 : 6,
+                  ),
               ],
               extraMarkers: [
                 if (displayPosition != null)
@@ -370,6 +375,11 @@ class _LiveTripScreenState extends State<LiveTripScreen> {
                       : 'Distancia a la ruta: ${_distanceToRouteMeters.round()} m '
                           '(se avisa automáticamente sobre los ${_deviationThresholdMeters.round()} m).',
                   style: const TextStyle(color: Colors.black54, fontSize: 12.5),
+                ),
+                const Text(
+                  'Nota: el Teleférico se dibuja en línea recta a propósito (es un cable '
+                  'aéreo real). Caminata y minibús sí siguen calles.',
+                  style: TextStyle(color: Colors.black38, fontSize: 11),
                 ),
                 const SizedBox(height: 12),
                 Row(

@@ -17,6 +17,19 @@ class _ReportScreenState extends State<ReportScreen> {
   final _descriptionController = TextEditingController();
   bool _isSubmitting = false;
 
+  /// Lista de sindicatos a mostrar en el selector. Si el tramo del viaje
+  /// trae un sindicato que no está en la lista fija (ej. "Por confirmar",
+  /// que viene de rutas calculadas genéricamente), lo agregamos aquí para
+  /// que el Dropdown no truene por tener un valor que no está en sus
+  /// opciones.
+  late final List<String> _syndicateOptions = [
+    if (widget.prefilledSyndicate != null &&
+        widget.prefilledSyndicate!.trim().isNotEmpty &&
+        !PilotZoneData.syndicates.contains(widget.prefilledSyndicate))
+      widget.prefilledSyndicate!,
+    ...PilotZoneData.syndicates,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -82,7 +95,7 @@ class _ReportScreenState extends State<ReportScreen> {
             DropdownButtonFormField<String>(
               value: _selectedSyndicate,
               decoration: const InputDecoration(labelText: 'Sindicato'),
-              items: PilotZoneData.syndicates
+              items: _syndicateOptions
                   .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                   .toList(),
               onChanged: (value) => setState(() => _selectedSyndicate = value),
