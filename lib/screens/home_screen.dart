@@ -37,7 +37,43 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _esperandoToqueEnMapa = false;
   List<Place> _suggestions = [];
 
+  // ============================================================
+  // ESTADO DE CAPAS DEL MAPA
+  // ============================================================
+  bool _showTeleferico = true;
+  bool _showPuma = true;
+  bool _showMinibus = true;
+
   late final List<Place> _allPlaces = LugaresData.allPlaces;
+
+  // ============================================================
+  // MÉTODOS DE FILTRO DE CAPAS
+  // ============================================================
+  void _toggleTeleferico() {
+    setState(() {
+      _showTeleferico = !_showTeleferico;
+    });
+  }
+
+  void _togglePuma() {
+    setState(() {
+      _showPuma = !_showPuma;
+    });
+  }
+
+  void _toggleMinibus() {
+    setState(() {
+      _showMinibus = !_showMinibus;
+    });
+  }
+
+  void _showAllLayers() {
+    setState(() {
+      _showTeleferico = true;
+      _showPuma = true;
+      _showMinibus = true;
+    });
+  }
 
   @override
   void initState() {
@@ -67,9 +103,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  /// Función para eliminar tildes y hacer búsqueda más flexible
   String _normalize(String text) {
-    final normalized = text
+    return text
         .replaceAll('á', 'a')
         .replaceAll('é', 'e')
         .replaceAll('í', 'i')
@@ -80,7 +115,6 @@ class _HomeScreenState extends State<HomeScreen> {
         .replaceAll('Í', 'I')
         .replaceAll('Ó', 'O')
         .replaceAll('Ú', 'U');
-    return normalized;
   }
 
   void _onSearchChanged(String query) {
@@ -107,11 +141,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (lower.isEmpty) return null;
     final normalized = _normalize(lower);
 
-    // Buscar en LugaresData
     final result = LugaresData.buscarLugar(text);
     if (result != null) return result;
 
-    // Si no encuentra, buscar ignorando tildes
     for (final place in _allPlaces) {
       final nameLower = place.name.toLowerCase();
       final nameNormalized = _normalize(nameLower);
@@ -120,7 +152,6 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     }
 
-    // Coincidencia parcial ignorando tildes
     for (final place in _allPlaces) {
       final nameLower = place.name.toLowerCase();
       final nameNormalized = _normalize(nameLower);
@@ -146,7 +177,6 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _pickOnMap(LatLng point) {
-    // Si está esperando toque en el mapa, seleccionar el punto
     if (_esperandoToqueEnMapa) {
       final tempPlace = Place(
         name: 'Punto en el mapa',
@@ -163,17 +193,15 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(' Destino marcado. Confirma si es correcto.'),
+          content: Text('📍 Destino marcado. Confirma si es correcto.'),
           duration: Duration(seconds: 2),
         ),
       );
       return;
     }
 
-    // Si ya hay confirmación pendiente, no hacer nada
     if (_mostrarConfirmacion) return;
 
-    // Si no está en modo selección, marcar directamente
     final tempPlace = Place(
       name: 'Punto en el mapa',
       location: point,
@@ -189,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _mapController.move(point, 14);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(' Destino marcado. Confirma si es correcto.'),
+        content: Text('📍 Destino marcado. Confirma si es correcto.'),
         duration: Duration(seconds: 2),
       ),
     );
@@ -275,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text(' Mantén presionado el mapa para elegir tu destino manualmente.'),
+        content: Text('👆 Mantén presionado el mapa para elegir tu destino manualmente.'),
         duration: Duration(seconds: 3),
       ),
     );
@@ -410,7 +438,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_mostrarConfirmacion || _destinoPendiente == null) return const SizedBox.shrink();
 
     return Positioned(
-      top: 80,
+      top: 130, // Ajustado para que no se superponga con los botones
       left: 16,
       right: 16,
       child: Card(
@@ -450,7 +478,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         foregroundColor: Colors.red,
                         side: const BorderSide(color: Colors.red),
                       ),
-                      child: const Text(' No, corregir'),
+                      child: const Text('❌ No, corregir'),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -461,13 +489,51 @@ class _HomeScreenState extends State<HomeScreen> {
                         backgroundColor: Colors.green,
                         foregroundColor: Colors.white,
                       ),
-                      child: const Text('Sí, ir aquí'),
+                      child: const Text('✅ Sí, ir aquí'),
                     ),
                   ),
                 ],
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterButton({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? (color ?? Colors.blue).withOpacity(0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isActive ? (color ?? Colors.blue) : Colors.grey,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                color: isActive ? (color ?? Colors.blue) : Colors.grey,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -484,6 +550,64 @@ class _HomeScreenState extends State<HomeScreen> {
             originMarker: _origin,
             destinationMarker: _destination,
             onLongPressPick: _pickOnMap,
+            showTelefericoNetwork: _showTeleferico,
+            showPumaNetwork: _showPuma,
+            showMinibusNetwork: _showMinibus,
+          ),
+          // ============================================================
+          // BARRA DE FILTROS DE CAPAS
+          // ============================================================
+          Positioned(
+            top: 12,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildFilterButton(
+                    icon: Icons.layers,
+                    label: 'Todos',
+                    isActive: _showTeleferico && _showPuma && _showMinibus,
+                    onTap: _showAllLayers,
+                    color: Colors.black87,
+                  ),
+                  _buildFilterButton(
+                    icon: Icons.cable,
+                    label: 'Teleférico',
+                    isActive: _showTeleferico,
+                    onTap: _toggleTeleferico,
+                    color: Colors.blue,
+                  ),
+                  _buildFilterButton(
+                    icon: Icons.directions_bus,
+                    label: 'Puma',
+                    isActive: _showPuma,
+                    onTap: _togglePuma,
+                    color: Colors.purple,
+                  ),
+                  _buildFilterButton(
+                    icon: Icons.airport_shuttle,
+                    label: 'Minibús',
+                    isActive: _showMinibus,
+                    onTap: _toggleMinibus,
+                    color: Colors.orange,
+                  ),
+                ],
+              ),
+            ),
           ),
           _buildConfirmDialog(),
           SafeArea(

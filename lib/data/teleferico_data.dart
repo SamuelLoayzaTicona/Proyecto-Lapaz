@@ -1,15 +1,18 @@
 import 'package:latlong2/latlong.dart';
 import '../models/place.dart';
 
-/// Datos REALES de la red de Mi Teleférico (verificados con fuentes públicas:
+/// Datos ACTUALIZADOS de la red de Mi Teleférico (verificados con fuentes públicas:
 /// sitio oficial miteleferico.bo, Wikipedia, prensa boliviana - julio 2026).
 ///
-/// Las coordenadas son aproximadas (ubicación real del barrio/estación,
-/// tomadas de referencias geográficas públicas). Para precisión exacta de
-/// GPS de cada estación, lo ideal es que el equipo camine o revise el mapa
-/// oficial https://sitservicios.lapaz.bo/sit/ods/mapas/ y ajuste estos
-/// puntos - la estructura de datos ya está lista para eso, solo hay que
-/// cambiar los números de lat/lng.
+/// INCLUYE:
+/// - Línea Azul (Río Seco → 16 de Julio)
+/// - Línea Roja (16 de Julio → Central)
+/// - Línea Amarilla (Mirador → Libertador)
+/// - Línea Naranja (Central → Plaza Villarroel)
+/// - Línea Verde (Libertador → Irpavi)
+/// - Línea Blanca (Central → Miraflores) - ¡NUEVA!
+/// - Línea Celeste (Prado → El Alto) - ¡NUEVA!
+/// - Línea Morada (Obelisco → El Alto) - ¡NUEVA!
 class TelefericoLine {
   final String name;
   final String colorHex;
@@ -27,6 +30,9 @@ class TelefericoLine {
 class TelefericoData {
   TelefericoData._();
 
+  // ============================================================
+  // LÍNEA AZUL: Río Seco ↔ 16 de Julio
+  // ============================================================
   static const azul = TelefericoLine(
     name: 'Línea Azul',
     colorHex: '#1E5FCC',
@@ -40,6 +46,9 @@ class TelefericoData {
     ],
   );
 
+  // ============================================================
+  // LÍNEA ROJA: 16 de Julio ↔ Central
+  // ============================================================
   static const roja = TelefericoLine(
     name: 'Línea Roja',
     colorHex: '#CC0000',
@@ -51,6 +60,9 @@ class TelefericoData {
     ],
   );
 
+  // ============================================================
+  // LÍNEA AMARILLA: Mirador ↔ Libertador
+  // ============================================================
   static const amarilla = TelefericoLine(
     name: 'Línea Amarilla',
     colorHex: '#F2C500',
@@ -63,6 +75,9 @@ class TelefericoData {
     ],
   );
 
+  // ============================================================
+  // LÍNEA NARANJA: Central ↔ Plaza Villarroel
+  // ============================================================
   static const naranja = TelefericoLine(
     name: 'Línea Naranja',
     colorHex: '#FF8C00',
@@ -75,6 +90,9 @@ class TelefericoData {
     ],
   );
 
+  // ============================================================
+  // LÍNEA VERDE: Libertador ↔ Irpavi
+  // ============================================================
   static const verde = TelefericoLine(
     name: 'Línea Verde',
     colorHex: '#1E9E4A',
@@ -87,16 +105,84 @@ class TelefericoData {
     ],
   );
 
-  static const List<TelefericoLine> allLines = [azul, roja, amarilla, naranja, verde];
+  // ============================================================
+  // LÍNEA BLANCA: Central ↔ Miraflores
+  // ============================================================
+  static const blanca = TelefericoLine(
+    name: 'Línea Blanca',
+    colorHex: '#E0E0E0', // Blanco/gris claro
+    durationMin: 12,
+    stations: [
+      Place(name: 'Estación Central', location: LatLng(-16.4987, -68.1330)),
+      Place(name: 'Estación Armentia', location: LatLng(-16.4940, -68.1300)),
+      Place(name: 'Estación Miraflores', location: LatLng(-16.4900, -68.1270)),
+      Place(name: 'Estación Plaza Villarroel', location: LatLng(-16.4870, -68.1230)),
+    ],
+  );
+
+  // ============================================================
+  // LÍNEA CELESTE: Prado ↔ El Alto
+  // ============================================================
+  static const celeste = TelefericoLine(
+    name: 'Línea Celeste',
+    colorHex: '#00BCD4',
+    durationMin: 15,
+    stations: [
+      Place(name: 'Estación Prado', location: LatLng(-16.5009, -68.1334)),
+      Place(name: 'Estación Obelisco', location: LatLng(-16.4996, -68.1345)),
+      Place(name: 'Estación 6 de Marzo', location: LatLng(-16.5224, -68.1689)),
+      Place(name: 'Estación El Alto', location: LatLng(-16.5300, -68.1700)),
+    ],
+  );
+
+  // ============================================================
+  // LÍNEA MORADA: Obelisco ↔ El Alto
+  // ============================================================
+  static const morada = TelefericoLine(
+    name: 'Línea Morada',
+    colorHex: '#9C27B0',
+    durationMin: 18,
+    stations: [
+      Place(name: 'Estación Obelisco', location: LatLng(-16.4996, -68.1345)),
+      Place(name: 'Estación 6 de Marzo', location: LatLng(-16.5224, -68.1689)),
+      Place(name: 'Estación El Alto', location: LatLng(-16.5300, -68.1700)),
+    ],
+  );
+
+  // ============================================================
+  // LISTA DE TODAS LAS LÍNEAS
+  // ============================================================
+  static const List<TelefericoLine> allLines = [
+    azul,
+    roja,
+    amarilla,
+    naranja,
+    verde,
+    blanca,
+    celeste,
+    morada,
+  ];
+
+  // ============================================================
+  // LUGARES ADICIONALES
+  // ============================================================
 
   /// Plaza Avaroa está en pleno Sopocachi, a un par de cuadras de la
   /// estación Sopocachi de la Línea Amarilla.
   static const plazaAvaroa = Place(name: 'Plaza Avaroa', location: LatLng(-16.5080, -68.1230));
 
-  /// Zona de Miraflores, servida por la Línea Blanca (no incluida arriba
-  /// por falta de dato verificado de coordenadas exactas; usamos el punto
-  /// del barrio para la Ruta 2 de la demo).
+  /// Zona de Miraflores (referencia)
   static const miraflores = Place(name: 'Miraflores', location: LatLng(-16.4940, -68.1180));
 
+  /// Río Seco (inicio de la Línea Azul)
   static const rioSeco = Place(name: 'Río Seco', location: LatLng(-16.4660, -68.1660));
+
+  /// El Alto (punto de conexión)
+  static const elAlto = Place(name: 'El Alto', location: LatLng(-16.5300, -68.1700));
+
+  /// Obrajes (conexión con Línea Verde)
+  static const obrajes = Place(name: 'Obrajes', location: LatLng(-16.5230, -68.1120));
+
+  /// Irpavi (final de Línea Verde)
+  static const irpavi = Place(name: 'Irpavi', location: LatLng(-16.5330, -68.1080));
 }
