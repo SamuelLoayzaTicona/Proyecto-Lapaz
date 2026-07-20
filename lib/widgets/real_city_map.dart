@@ -3,9 +3,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
 import '../data/pumakatari_data.dart';
+import '../data/minibus_data.dart';
 
 /// Mapa real de La Paz/El Alto (tiles de OpenStreetMap).
-/// Muestra las líneas de Teleférico y PumaKatari dibujadas con sus colores.
+/// Muestra las líneas de Teleférico, PumaKatari y Minibús dibujadas con sus colores.
 class RealCityMap extends StatelessWidget {
   final LatLng center;
   final LatLng? originMarker;
@@ -17,6 +18,7 @@ class RealCityMap extends StatelessWidget {
   final List<Marker> extraMarkers;
   final bool showTelefericoNetwork;
   final bool showPumaNetwork;
+  final bool showMinibusNetwork;
 
   const RealCityMap({
     super.key,
@@ -29,6 +31,7 @@ class RealCityMap extends StatelessWidget {
     this.extraMarkers = const [],
     this.showTelefericoNetwork = true,
     this.showPumaNetwork = true,
+    this.showMinibusNetwork = true,
   });
 
   @override
@@ -66,7 +69,7 @@ class RealCityMap extends StatelessWidget {
           ),
 
         // ============================================================
-        // LÍNEAS DE PUMAKATARI (NUEVO)
+        // LÍNEAS DE PUMAKATARI
         // ============================================================
         if (showPumaNetwork)
           PolylineLayer(
@@ -78,13 +81,27 @@ class RealCityMap extends StatelessWidget {
                         color: _getPumaColor(route.id, isReturn: false),
                         strokeWidth: 4,
                       ),
-                      // Ruta VUELTA - línea más clara (sin punteado)
+                      // Ruta VUELTA - línea más clara
                       Polyline(
                         points: route.returnStops.map((s) => s.location).toList(),
                         color: _getPumaColor(route.id, isReturn: true),
                         strokeWidth: 3,
                       ),
                     ])
+                .toList(),
+          ),
+
+        // ============================================================
+        // LÍNEAS DE MINIBÚS (NUEVO)
+        // ============================================================
+        if (showMinibusNetwork)
+          PolylineLayer(
+            polylines: MinibusData.allRoutes
+                .map((route) => Polyline(
+                      points: route.points,
+                      color: _getMinibusColor(route.id),
+                      strokeWidth: 3,
+                    ))
                 .toList(),
           ),
 
@@ -127,6 +144,23 @@ class RealCityMap extends StatelessWidget {
                       decoration: BoxDecoration(
                         shape: BoxShape.circle,
                         color: _getPumaColor(route.id, isReturn: false),
+                        border: Border.all(color: Colors.white, width: 1.0),
+                      ),
+                    ),
+                  ),
+
+            // Marcadores de Minibús (puntos de referencia)
+            if (showMinibusNetwork)
+              for (final route in MinibusData.allRoutes)
+                for (final stop in route.stops)
+                  Marker(
+                    point: stop.location,
+                    width: 6,
+                    height: 6,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _getMinibusColor(route.id),
                         border: Border.all(color: Colors.white, width: 1.0),
                       ),
                     ),
@@ -175,11 +209,26 @@ class RealCityMap extends StatelessWidget {
   Color _getPumaColor(String routeId, {required bool isReturn}) {
     switch (routeId) {
       case 'PK_ACHUMANI':
-        return isReturn ? const Color(0xFF9C27B0) : const Color(0xFF7B1FA2); // Morado
+        return isReturn ? const Color(0xFF9C27B0) : const Color(0xFF7B1FA2);
       case 'PK_CHASQUIPAMPA':
-        return isReturn ? const Color(0xFFFF6F00) : const Color(0xFFE65100); // Naranja
+        return isReturn ? const Color(0xFFFF6F00) : const Color(0xFFE65100);
       default:
-        return isReturn ? const Color(0xFF546E7A) : const Color(0xFF37474F); // Gris
+        return isReturn ? const Color(0xFF546E7A) : const Color(0xFF37474F);
+    }
+  }
+
+  Color _getMinibusColor(String routeId) {
+    switch (routeId) {
+      case 'MB_RIOSECO_CEJA':
+        return const Color(0xFF9B59B6); // Morado
+      case 'MB_CEJA_6AGOSTO':
+        return const Color(0xFFF39C12); // Naranja
+      case 'MB_PEREZ_COTACOTA':
+        return const Color(0xFF2C3E50); // Azul oscuro
+      case 'MB_CEJA_TELEFERICO':
+        return const Color(0xFF27AE60); // Verde
+      default:
+        return const Color(0xFF7F8C8D); // Gris
     }
   }
 }
