@@ -1,6 +1,6 @@
 import 'package:latlong2/latlong.dart';
 import '../models/place.dart';
-import '../services/geo_utils.dart'; // ← IMPORTANTE: para GeoUtils.distanceMeters()
+import '../services/geo_utils.dart'; 
 
 class MinibusRoute {
   final String id;

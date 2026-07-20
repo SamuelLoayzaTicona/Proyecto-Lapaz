@@ -3,11 +3,13 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
 import '../data/pumakatari_data.dart';
+import '../data/lugares_data.dart';
 import '../models/place.dart';
 import '../models/transport_models.dart';
 import '../services/location_service.dart';
 import '../services/trip_planner_service.dart';
 import '../services/voice_input_service.dart';
+import '../services/geocoding_service.dart';
 import '../state/app_settings.dart';
 import '../widgets/real_city_map.dart';
 import 'trip_plan_screen.dart';
@@ -30,15 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isLocating = true;
   bool _isListening = false;
   bool _isCalculatingRoute = false;
+  bool _mostrarConfirmacion = false;
+  Place? _destinoPendiente;
+  bool _esperandoToqueEnMapa = false;
   List<Place> _suggestions = [];
 
-  late final List<Place> _allPlaces = [
-    TelefericoData.plazaAvaroa,
-    TelefericoData.miraflores,
-    TelefericoData.rioSeco,
-    for (final line in TelefericoData.allLines) ...line.stations,
-    ...PumaKatariData.allStops,
-  ];
+  late final List<Place> _allPlaces = LugaresData.allPlaces;
 
   @override
   void initState() {
@@ -68,15 +67,36 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Función para eliminar tildes y hacer búsqueda más flexible
+  String _normalize(String text) {
+    final normalized = text
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U');
+    return normalized;
+  }
+
   void _onSearchChanged(String query) {
     if (query.trim().isEmpty) {
       setState(() => _suggestions = []);
       return;
     }
-    final lower = query.toLowerCase();
+    final lower = query.toLowerCase().trim();
+    final normalized = _normalize(lower);
     setState(() {
       _suggestions = _allPlaces
-          .where((p) => p.name.toLowerCase().contains(lower))
+          .where((p) {
+            final nameLower = p.name.toLowerCase();
+            final nameNormalized = _normalize(nameLower);
+            return nameLower.contains(lower) || nameNormalized.contains(normalized);
+          })
           .take(5)
           .toList();
     });
@@ -85,14 +105,30 @@ class _HomeScreenState extends State<HomeScreen> {
   Place? _resolvePlaceFromText(String text) {
     final lower = text.trim().toLowerCase();
     if (lower.isEmpty) return null;
+    final normalized = _normalize(lower);
+
+    // Buscar en LugaresData
+    final result = LugaresData.buscarLugar(text);
+    if (result != null) return result;
+
+    // Si no encuentra, buscar ignorando tildes
     for (final place in _allPlaces) {
-      if (place.name.toLowerCase() == lower) return place;
-    }
-    for (final place in _allPlaces) {
-      if (place.name.toLowerCase().contains(lower) || lower.contains(place.name.toLowerCase())) {
+      final nameLower = place.name.toLowerCase();
+      final nameNormalized = _normalize(nameLower);
+      if (nameLower == lower || nameNormalized == normalized) {
         return place;
       }
     }
+
+    // Coincidencia parcial ignorando tildes
+    for (final place in _allPlaces) {
+      final nameLower = place.name.toLowerCase();
+      final nameNormalized = _normalize(nameLower);
+      if (nameLower.contains(lower) || nameNormalized.contains(normalized)) {
+        return place;
+      }
+    }
+
     return null;
   }
 
@@ -102,20 +138,60 @@ class _HomeScreenState extends State<HomeScreen> {
       _destinationLabel = place.name;
       _destinationController.text = place.name;
       _suggestions = [];
+      _destinoPendiente = place;
+      _mostrarConfirmacion = true;
+      _esperandoToqueEnMapa = false;
     });
     _mapController.move(place.location, 14);
   }
 
   void _pickOnMap(LatLng point) {
+    // Si está esperando toque en el mapa, seleccionar el punto
+    if (_esperandoToqueEnMapa) {
+      final tempPlace = Place(
+        name: 'Punto en el mapa',
+        location: point,
+      );
+      setState(() {
+        _destination = point;
+        _destinationLabel = 'Punto en el mapa';
+        _destinationController.text = 'Punto en el mapa';
+        _suggestions = [];
+        _destinoPendiente = tempPlace;
+        _mostrarConfirmacion = true;
+        _esperandoToqueEnMapa = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(' Destino marcado. Confirma si es correcto.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    // Si ya hay confirmación pendiente, no hacer nada
+    if (_mostrarConfirmacion) return;
+
+    // Si no está en modo selección, marcar directamente
+    final tempPlace = Place(
+      name: 'Punto en el mapa',
+      location: point,
+    );
     setState(() {
       _destination = point;
-      _destinationLabel =
-          'Punto en el mapa (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
-      _destinationController.text = _destinationLabel;
+      _destinationLabel = 'Punto en el mapa';
+      _destinationController.text = 'Punto en el mapa';
       _suggestions = [];
+      _destinoPendiente = tempPlace;
+      _mostrarConfirmacion = true;
     });
+    _mapController.move(point, 14);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Destino elegido en el mapa.'), duration: Duration(seconds: 2)),
+      const SnackBar(
+        content: Text(' Destino marcado. Confirma si es correcto.'),
+        duration: Duration(seconds: 2),
+      ),
     );
   }
 
@@ -145,23 +221,85 @@ class _HomeScreenState extends State<HomeScreen> {
         if (match != null) {
           _pickPlace(match);
         } else {
-          setState(() {
-            _destinationLabel = text.trim();
-            _destination = null;
-            _suggestions = [];
-          });
+          _buscarConGeocoding(text.trim());
         }
       },
     );
   }
 
+  Future<void> _buscarConGeocoding(String query) async {
+    setState(() => _isCalculatingRoute = true);
+    final coords = await GeocodingService.obtenerCoordenadas(query);
+    if (!mounted) return;
+    setState(() => _isCalculatingRoute = false);
+
+    if (coords == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No pudimos encontrar "$query". Prueba con otro nombre o toca el mapa.'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final place = Place(name: query, location: coords);
+    setState(() {
+      _destination = coords;
+      _destinationLabel = query;
+      _destinationController.text = query;
+      _destinoPendiente = place;
+      _mostrarConfirmacion = true;
+      _suggestions = [];
+      _esperandoToqueEnMapa = false;
+    });
+    _mapController.move(coords, 14);
+  }
+
+  void _confirmarDestino() {
+    if (_destinoPendiente == null) return;
+    setState(() {
+      _destination = _destinoPendiente!.location;
+      _destinationLabel = _destinoPendiente!.name;
+      _mostrarConfirmacion = false;
+      _esperandoToqueEnMapa = false;
+    });
+    _calcularRuta();
+  }
+
+  void _cancelarConfirmacion() {
+    setState(() {
+      _mostrarConfirmacion = false;
+      _destinoPendiente = null;
+      _esperandoToqueEnMapa = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(' Mantén presionado el mapa para elegir tu destino manualmente.'),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
   Future<void> _continue() async {
+    if (_mostrarConfirmacion) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Confirma o cancela el destino antes de continuar.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     if (_destinationLabel.isEmpty) {
       final match = _resolvePlaceFromText(_destinationController.text);
       if (match != null) {
         _pickPlace(match);
+        return;
       } else if (_destinationController.text.trim().isNotEmpty) {
-        _destinationLabel = _destinationController.text.trim();
+        await _buscarConGeocoding(_destinationController.text.trim());
+        return;
       }
     }
 
@@ -179,9 +317,12 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    _calcularRuta();
+  }
+
+  void _calcularRuta() async {
     setState(() => _isCalculatingRoute = true);
 
-    // planTrip devuelve UNA LISTA de opciones
     final opciones = await TripPlannerService.planTrip(
       origin: _origin,
       destination: _destination!,
@@ -191,7 +332,6 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() => _isCalculatingRoute = false);
 
-    // Verificar si la lista está vacía
     if (opciones.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -205,7 +345,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Si solo hay una opción, ir directamente
     if (opciones.length == 1) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => TripPlanScreen(plan: opciones.first)),
@@ -213,7 +352,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // Si hay múltiples opciones, mostrar diálogo
     _showRouteOptionsDialog(context, opciones);
   }
 
@@ -268,6 +406,73 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildConfirmDialog() {
+    if (!_mostrarConfirmacion || _destinoPendiente == null) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 80,
+      left: 16,
+      right: 16,
+      child: Card(
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.red, size: 28),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '¿Ir a "${_destinoPendiente!.name}"?',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '(${_destinoPendiente!.location.latitude.toStringAsFixed(4)}, ${_destinoPendiente!.location.longitude.toStringAsFixed(4)})',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _cancelarConfirmacion,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                      child: const Text(' No, corregir'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _confirmarDestino,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('Sí, ir aquí'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -280,6 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
             destinationMarker: _destination,
             onLongPressPick: _pickOnMap,
           ),
+          _buildConfirmDialog(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -348,10 +554,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             onChanged: _onSearchChanged,
                             onSubmitted: (text) {
                               final match = _resolvePlaceFromText(text);
-                              if (match != null) _pickPlace(match);
+                              if (match != null) {
+                                _pickPlace(match);
+                              } else if (text.trim().isNotEmpty) {
+                                _buscarConGeocoding(text.trim());
+                              }
                             },
                             decoration: InputDecoration(
-                              hintText: 'Ej: Campo Verde, Plaza Camacho...',
+                              hintText: 'Ej: Plaza Avaroa, Río Seco, Calle 15...',
                               prefixIcon: const Icon(Icons.search_rounded),
                               filled: true,
                               fillColor: const Color(0xFFF2F4F3),
@@ -394,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      onPressed: _isCalculatingRoute ? null : _continue,
+                      onPressed: (_isCalculatingRoute || _mostrarConfirmacion) ? null : _continue,
                       icon: _isCalculatingRoute
                           ? const SizedBox(
                               width: 16,
