@@ -192,7 +192,7 @@ class RealCityMap extends StatelessWidget {
         // ============================================================
         // LEYENDA
         // ============================================================
-        RichAttributionWidget(
+        const RichAttributionWidget(
           attributions: [
             TextSourceAttribution('© OpenStreetMap contributors'),
           ],

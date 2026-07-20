@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
-import '../data/pumakatari_data.dart';
 import '../data/lugares_data.dart';
 import '../models/place.dart';
 import '../models/transport_models.dart';
@@ -13,6 +12,7 @@ import '../services/geocoding_service.dart';
 import '../state/app_settings.dart';
 import '../widgets/real_city_map.dart';
 import 'trip_plan_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -532,7 +532,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? (color ?? Colors.blue).withOpacity(0.15) : Colors.transparent,
+          color: isActive ? (color ?? Colors.blue).withValues(alpha: 0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -582,11 +582,11 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.95),
+                color: Colors.white.withValues(alpha: 0.95),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -641,6 +641,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () => _showAccessibilitySheet(context),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      icon: const Icon(Icons.smart_toy_rounded, color: Colors.black87),
+                      tooltip: 'Asistente',
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ChatScreen()),
+                        );
+                      },
+                    ),
+                  ),
                   const Spacer(),
                   FloatingActionButton.small(
                     heroTag: 'locate',
@@ -671,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 4)),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 4)),
                   ],
                 ),
                 child: Column(

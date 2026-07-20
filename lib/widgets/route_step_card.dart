@@ -32,7 +32,7 @@ class RouteStepCard extends StatelessWidget {
                   child: Container(
                     width: 3,
                     margin: const EdgeInsets.symmetric(vertical: 4),
-                    color: color.withOpacity(0.3),
+                    color: color.withValues(alpha: 0.3),
                   ),
                 ),
             ],

@@ -1,4 +1,3 @@
-import 'package:latlong2/latlong.dart';
 import '../models/place.dart';
 import 'teleferico_data.dart';
 import 'pumakatari_data.dart';

@@ -107,7 +107,7 @@ class TripPlannerService {
       segments.add(RouteSegment(
         mode: TransportMode.minibus,
         title: 'Minibús directo',
-        subtitle: 'Bs. 2.50 · ${min} min',
+        subtitle: 'Bs. 2.50 · $min min',
         instruction: 'Toma un minibús con destino a $destinationLabel.',
         fareBs: 2.5,
         durationMin: min,
@@ -184,7 +184,7 @@ class TripPlannerService {
           segments.add(RouteSegment(
             mode: TransportMode.teleferico,
             title: 'Teleférico · ${step.line.name}',
-            subtitle: 'Bs. 3.00 · ${duration} min',
+            subtitle: 'Bs. 3.00 · $duration min',
             instruction: 'Aborda la ${step.line.name} desde ${step.stations.first.name} hasta ${step.stations.last.name}.',
             fareBs: 3.0,
             durationMin: duration,
@@ -209,7 +209,7 @@ class TripPlannerService {
         segments.add(RouteSegment(
           mode: TransportMode.minibus,
           title: 'Minibús',
-          subtitle: 'Bs. 2.50 · ${minibusMin} min',
+          subtitle: 'Bs. 2.50 · $minibusMin min',
           instruction: 'Toma un minibús con destino a $destinationLabel.',
           fareBs: 2.5,
           durationMin: minibusMin,
@@ -354,7 +354,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.pumakatari,
       title: 'PumaKatari · ${route.name}',
-      subtitle: 'Bs. ${route.fare.toStringAsFixed(2)} · ${travelTime} min',
+      subtitle: 'Bs. ${route.fare.toStringAsFixed(2)} · $travelTime min',
       instruction: 'Aborda el PumaKatari en ${nearestOriginStop.name} y viaja hasta ${destStop.name}.',
       fareBs: route.fare,
       durationMin: travelTime,
@@ -487,7 +487,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.minibus,
       title: 'Minibús · ${minibusRoute.name}',
-      subtitle: 'Bs. ${minibusRoute.fare.toStringAsFixed(2)} · ${minibusMin} min',
+      subtitle: 'Bs. ${minibusRoute.fare.toStringAsFixed(2)} · $minibusMin min',
       instruction: 'Toma el minibús ${minibusRoute.name} hasta ${teleStation.name}.',
       fareBs: minibusRoute.fare,
       durationMin: minibusMin,
@@ -516,7 +516,7 @@ class TripPlannerService {
         segments.add(RouteSegment(
           mode: TransportMode.teleferico,
           title: 'Teleférico · ${step.line.name}',
-          subtitle: 'Bs. 3.00 · ${duration} min',
+          subtitle: 'Bs. 3.00 · $duration min',
           instruction: 'Aborda la ${step.line.name} desde ${step.stations.first.name} hasta ${step.stations.last.name}.',
           fareBs: 3.0,
           durationMin: duration,
@@ -541,7 +541,7 @@ class TripPlannerService {
       segments.add(RouteSegment(
         mode: TransportMode.minibus,
         title: 'Minibús final',
-        subtitle: 'Bs. 2.50 · ${minibusFinalMin} min',
+        subtitle: 'Bs. 2.50 · $minibusFinalMin min',
         instruction: 'Toma un minibús hasta $destinationLabel.',
         fareBs: 2.5,
         durationMin: minibusFinalMin,
@@ -674,7 +674,7 @@ class TripPlannerService {
         segments.add(RouteSegment(
           mode: TransportMode.teleferico,
           title: 'Teleférico · ${step.line.name}',
-          subtitle: 'Bs. 3.00 · ${duration} min',
+          subtitle: 'Bs. 3.00 · $duration min',
           instruction: 'Aborda la ${step.line.name} desde ${step.stations.first.name} hasta ${step.stations.last.name}.',
           fareBs: 3.0,
           durationMin: duration,
@@ -718,7 +718,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.minibus,
       title: 'Minibús · ${minibusRoute.name}',
-      subtitle: 'Bs. ${minibusRoute.fare.toStringAsFixed(2)} · ${minibusMin} min',
+      subtitle: 'Bs. ${minibusRoute.fare.toStringAsFixed(2)} · $minibusMin min',
       instruction: 'Toma el minibús ${minibusRoute.name} hasta $destinationLabel.',
       fareBs: minibusRoute.fare,
       durationMin: minibusMin,
@@ -855,7 +855,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.minibus,
       title: 'Minibús · ${minibusRoute.name}',
-      subtitle: 'Bs. ${minibusRoute.fare.toStringAsFixed(2)} · ${minibusMin} min',
+      subtitle: 'Bs. ${minibusRoute.fare.toStringAsFixed(2)} · $minibusMin min',
       instruction: 'Toma el minibús ${minibusRoute.name} hasta ${pumaStartStop.name}.',
       fareBs: minibusRoute.fare,
       durationMin: minibusMin,
@@ -874,7 +874,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.pumakatari,
       title: 'PumaKatari · ${pumaRoute.name}',
-      subtitle: 'Bs. ${pumaRoute.fare.toStringAsFixed(2)} · ${travelTime} min',
+      subtitle: 'Bs. ${pumaRoute.fare.toStringAsFixed(2)} · $travelTime min',
       instruction: 'Aborda el PumaKatari en ${pumaStartStop.name} y viaja hasta ${pumaDestStop.name}.',
       fareBs: pumaRoute.fare,
       durationMin: travelTime,
@@ -1061,7 +1061,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.pumakatari,
       title: 'PumaKatari · ${pumaRoute.name}',
-      subtitle: 'Bs. ${pumaRoute.fare.toStringAsFixed(2)} · ${travelTime} min',
+      subtitle: 'Bs. ${pumaRoute.fare.toStringAsFixed(2)} · $travelTime min',
       instruction: 'Aborda el PumaKatari en ${nearestOriginStop.name} y viaja hasta ${pumaStartStop.name}.',
       fareBs: pumaRoute.fare,
       durationMin: travelTime,
@@ -1104,7 +1104,7 @@ class TripPlannerService {
         segments.add(RouteSegment(
           mode: TransportMode.teleferico,
           title: 'Teleférico · ${step.line.name}',
-          subtitle: 'Bs. 3.00 · ${duration} min',
+          subtitle: 'Bs. 3.00 · $duration min',
           instruction: 'Aborda la ${step.line.name} desde ${step.stations.first.name} hasta ${step.stations.last.name}.',
           fareBs: 3.0,
           durationMin: duration,
@@ -1129,7 +1129,7 @@ class TripPlannerService {
       segments.add(RouteSegment(
         mode: TransportMode.minibus,
         title: 'Minibús final',
-        subtitle: 'Bs. 2.50 · ${minibusFinalMin} min',
+        subtitle: 'Bs. 2.50 · $minibusFinalMin min',
         instruction: 'Toma un minibús hasta $destinationLabel.',
         fareBs: 2.5,
         durationMin: minibusFinalMin,
@@ -1315,7 +1315,7 @@ class TripPlannerService {
         segments.add(RouteSegment(
           mode: TransportMode.teleferico,
           title: 'Teleférico · ${step.line.name}',
-          subtitle: 'Bs. 3.00 · ${duration} min',
+          subtitle: 'Bs. 3.00 · $duration min',
           instruction: 'Aborda la ${step.line.name} desde ${step.stations.first.name} hasta ${step.stations.last.name}.',
           fareBs: 3.0,
           durationMin: duration,
@@ -1356,7 +1356,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.pumakatari,
       title: 'PumaKatari · ${pumaRoute.name}',
-      subtitle: 'Bs. ${pumaRoute.fare.toStringAsFixed(2)} · ${travelTime} min',
+      subtitle: 'Bs. ${pumaRoute.fare.toStringAsFixed(2)} · $travelTime min',
       instruction: 'Aborda el PumaKatari en ${nearestOriginStop.name} y viaja hasta ${pumaDestStop.name}.',
       fareBs: pumaRoute.fare,
       durationMin: travelTime,
@@ -1417,7 +1417,6 @@ class TripPlannerService {
         if (secondRoute.id == firstRoute.id) continue;
 
         final endPoint = MinibusData.findNearestPointOnRoute(destination, secondRoute);
-        if (endPoint == null) continue;
 
         // Verificar si las rutas se cruzan cerca
         for (final point1 in firstRoute.points) {
@@ -1497,7 +1496,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.minibus,
       title: 'Minibús · ${firstRoute.name}',
-      subtitle: 'Bs. ${firstRoute.fare.toStringAsFixed(2)} · ${firstMinibusMin} min',
+      subtitle: 'Bs. ${firstRoute.fare.toStringAsFixed(2)} · $firstMinibusMin min',
       instruction: 'Toma el minibús ${firstRoute.name} hasta el punto de transbordo.',
       fareBs: firstRoute.fare,
       durationMin: firstMinibusMin,
@@ -1540,7 +1539,7 @@ class TripPlannerService {
     segments.add(RouteSegment(
       mode: TransportMode.minibus,
       title: 'Minibús · ${secondRoute.name}',
-      subtitle: 'Bs. ${secondRoute.fare.toStringAsFixed(2)} · ${secondMinibusMin} min',
+      subtitle: 'Bs. ${secondRoute.fare.toStringAsFixed(2)} · $secondMinibusMin min',
       instruction: 'Toma el minibús ${secondRoute.name} hasta $destinationLabel.',
       fareBs: secondRoute.fare,
       durationMin: secondMinibusMin,
@@ -1604,7 +1603,7 @@ class TripPlannerService {
       segments.add(RouteSegment(
         mode: TransportMode.walk,
         title: 'Camina a tu destino',
-        subtitle: '${walkMeters.round()} m · ${walkMin} min',
+        subtitle: '${walkMeters.round()} m · $walkMin min',
         instruction: 'Camina hasta $destinationLabel.',
         fareBs: 0,
         durationMin: walkMin,

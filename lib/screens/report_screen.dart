@@ -93,7 +93,7 @@ class _ReportScreenState extends State<ReportScreen> {
             ),
             const SizedBox(height: 20),
             DropdownButtonFormField<String>(
-              value: _selectedSyndicate,
+              initialValue: _selectedSyndicate,
               decoration: const InputDecoration(labelText: 'Sindicato'),
               items: _syndicateOptions
                   .map((s) => DropdownMenuItem(value: s, child: Text(s)))
