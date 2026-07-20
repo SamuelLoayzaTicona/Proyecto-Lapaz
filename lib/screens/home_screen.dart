@@ -4,7 +4,7 @@ import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
 import '../data/pumakatari_data.dart';
 import '../models/place.dart';
-import '../models/transport_models.dart'; // ← IMPORTANTE: para TripPlan
+import '../models/transport_models.dart';
 import '../services/location_service.dart';
 import '../services/trip_planner_service.dart';
 import '../services/voice_input_service.dart';
@@ -172,22 +172,30 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    if (_destination == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona un lugar válido en el mapa o en la búsqueda.')),
+      );
+      return;
+    }
+
     setState(() => _isCalculatingRoute = true);
 
-    final opciones = await TripPlannerService.planTripOptions(
+    final plan = await TripPlannerService.planTrip(
       origin: _origin,
-      destinationQuery: _destinationLabel,
+      destination: _destination!,
+      destinationLabel: _destinationLabel,
     );
 
     if (!mounted) return;
     setState(() => _isCalculatingRoute = false);
 
-    if (opciones.isEmpty) {
+    if (plan == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'No encontramos una ruta para "$_destinationLabel". '
-            'Prueba con "Campo Verde", "Plaza Camacho" o "Plaza Avaroa".',
+            'Prueba con otro destino o intenta más tarde.',
           ),
           duration: const Duration(seconds: 4),
         ),
@@ -195,59 +203,8 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    if (opciones.length == 1) {
-      Navigator.of(context).push(
-        MaterialPageRoute(builder: (_) => TripPlanScreen(plan: opciones.first)),
-      );
-      return;
-    }
-
-    _showRouteOptionsDialog(context, opciones);
-  }
-
-  void _showRouteOptionsDialog(BuildContext context, List<TripPlan> opciones) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          height: MediaQuery.of(context).size.height * 0.6,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Elige tu ruta preferida',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Selecciona una de las ${opciones.length} opciones disponibles',
-                style: const TextStyle(color: Colors.black54),
-              ),
-              const SizedBox(height: 16),
-              Expanded(
-                child: ListView.builder(
-                  itemCount: opciones.length,
-                  itemBuilder: (context, index) {
-                    final plan = opciones[index];
-                    return _RouteOptionCard(
-                      plan: plan,
-                      index: index + 1,
-                      onTap: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
     );
   }
 
