@@ -181,7 +181,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
     setState(() => _isCalculatingRoute = true);
 
-    final plan = await TripPlannerService.planTrip(
+    // planTrip devuelve UNA LISTA de opciones
+    final opciones = await TripPlannerService.planTrip(
       origin: _origin,
       destination: _destination!,
       destinationLabel: _destinationLabel,
@@ -190,7 +191,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() => _isCalculatingRoute = false);
 
-    if (plan == null) {
+    // Verificar si la lista está vacía
+    if (opciones.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -203,8 +205,66 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
+    // Si solo hay una opción, ir directamente
+    if (opciones.length == 1) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => TripPlanScreen(plan: opciones.first)),
+      );
+      return;
+    }
+
+    // Si hay múltiples opciones, mostrar diálogo
+    _showRouteOptionsDialog(context, opciones);
+  }
+
+  void _showRouteOptionsDialog(BuildContext context, List<TripPlan> opciones) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.65,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Elige tu ruta preferida',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selecciona una de las ${opciones.length} opciones disponibles',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: opciones.length,
+                  itemBuilder: (context, index) {
+                    final plan = opciones[index];
+                    return _RouteOptionCard(
+                      plan: plan,
+                      index: index + 1,
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -410,7 +470,7 @@ class _RouteOptionCard extends StatelessWidget {
           child: Text('$index', style: const TextStyle(color: Colors.white)),
         ),
         title: Text('${plan.totalDurationMin} min · Bs. ${plan.totalFareBs.toStringAsFixed(2)}'),
-        subtitle: Text('${plan.segments.length} tramos'),
+        subtitle: Text('${plan.segments.length} tramos · ${plan.totalDurationMin} min'),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
