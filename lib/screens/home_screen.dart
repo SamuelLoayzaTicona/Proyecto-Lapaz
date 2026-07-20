@@ -9,6 +9,7 @@ import '../services/voice_input_service.dart';
 import '../state/app_settings.dart';
 import '../widgets/real_city_map.dart';
 import 'trip_plan_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -228,6 +229,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.accessibility_new_rounded, color: Colors.black87),
                       tooltip: 'Accesibilidad',
                       onPressed: () => _showAccessibilitySheet(context),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      icon: const Icon(Icons.smart_toy_rounded, color: Colors.black87),
+                      tooltip: 'Asistente',
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ChatScreen()),
+                        );
+                      },
                     ),
                   ),
                   const Spacer(),
