@@ -102,15 +102,40 @@ class TripPlan {
 
 /// Reporte de "trameaje" (cuando un minibús no respeta su ruta/tarifa).
 class TrameajeReport {
+  final String? id;
   final String syndicate;
   final String plate;
   final String description;
   final DateTime reportedAt;
+  final String status; // 'Recibido' | 'En revisión' | 'Atendido'
 
   const TrameajeReport({
+    this.id,
     required this.syndicate,
     required this.plate,
     required this.description,
     required this.reportedAt,
+    this.status = 'Recibido',
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'syndicate': syndicate,
+      'plate': plate,
+      'description': description,
+      'reportedAt': reportedAt.toIso8601String(),
+      'status': status,
+    };
+  }
+
+  factory TrameajeReport.fromMap(String id, Map<String, dynamic> map) {
+    return TrameajeReport(
+      id: id,
+      syndicate: map['syndicate'] as String? ?? 'Desconocido',
+      plate: map['plate'] as String? ?? '',
+      description: map['description'] as String? ?? '',
+      reportedAt: DateTime.tryParse(map['reportedAt'] as String? ?? '') ?? DateTime.now(),
+      status: map['status'] as String? ?? 'Recibido',
+    );
+  }
 }

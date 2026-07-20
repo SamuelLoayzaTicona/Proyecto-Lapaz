@@ -2,13 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
+import '../data/lugares_data.dart';
 import '../models/place.dart';
+import '../models/transport_models.dart';
 import '../services/location_service.dart';
 import '../services/trip_planner_service.dart';
 import '../services/voice_input_service.dart';
+import '../services/geocoding_service.dart';
 import '../state/app_settings.dart';
 import '../widgets/real_city_map.dart';
 import 'trip_plan_screen.dart';
+import 'chat_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -22,22 +26,54 @@ class _HomeScreenState extends State<HomeScreen> {
   final _mapController = MapController();
   final _voiceService = VoiceInputService();
 
-  LatLng _origin = TelefericoData.rioSeco.location; // fallback hasta detectar GPS real
+  LatLng _origin = TelefericoData.rioSeco.location;
   LatLng? _destination;
   String _destinationLabel = '';
   bool _isLocating = true;
   bool _isListening = false;
+  bool _isCalculatingRoute = false;
+  bool _mostrarConfirmacion = false;
+  Place? _destinoPendiente;
+  bool _esperandoToqueEnMapa = false;
   List<Place> _suggestions = [];
 
-  /// Lugares conocidos que alimentan el buscador de texto y las sugerencias.
-  /// Combina los nombres de la Zona Piloto con las estaciones reales de
-  /// Teleférico, para que "escribir" encuentre resultados reales.
-  late final List<Place> _allPlaces = [
-    TelefericoData.plazaAvaroa,
-    TelefericoData.miraflores,
-    TelefericoData.rioSeco,
-    for (final line in TelefericoData.allLines) ...line.stations,
-  ];
+  // ============================================================
+  // ESTADO DE CAPAS DEL MAPA
+  // ============================================================
+  bool _showTeleferico = true;
+  bool _showPuma = true;
+  bool _showMinibus = true;
+
+  late final List<Place> _allPlaces = LugaresData.allPlaces;
+
+  // ============================================================
+  // MÉTODOS DE FILTRO DE CAPAS
+  // ============================================================
+  void _toggleTeleferico() {
+    setState(() {
+      _showTeleferico = !_showTeleferico;
+    });
+  }
+
+  void _togglePuma() {
+    setState(() {
+      _showPuma = !_showPuma;
+    });
+  }
+
+  void _toggleMinibus() {
+    setState(() {
+      _showMinibus = !_showMinibus;
+    });
+  }
+
+  void _showAllLayers() {
+    setState(() {
+      _showTeleferico = true;
+      _showPuma = true;
+      _showMinibus = true;
+    });
+  }
 
   @override
   void initState() {
@@ -62,11 +98,23 @@ class _HomeScreenState extends State<HomeScreen> {
       });
       _mapController.move(_origin, 14);
     } catch (_) {
-      // Si no hay permiso o GPS, seguimos con el fallback (Río Seco) para
-      // que la demo funcione igual.
       if (!mounted) return;
       setState(() => _isLocating = false);
     }
+  }
+
+  String _normalize(String text) {
+    return text
+        .replaceAll('á', 'a')
+        .replaceAll('é', 'e')
+        .replaceAll('í', 'i')
+        .replaceAll('ó', 'o')
+        .replaceAll('ú', 'u')
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U');
   }
 
   void _onSearchChanged(String query) {
@@ -74,31 +122,44 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() => _suggestions = []);
       return;
     }
-    final lower = query.toLowerCase();
+    final lower = query.toLowerCase().trim();
+    final normalized = _normalize(lower);
     setState(() {
       _suggestions = _allPlaces
-          .where((p) => p.name.toLowerCase().contains(lower))
+          .where((p) {
+            final nameLower = p.name.toLowerCase();
+            final nameNormalized = _normalize(nameLower);
+            return nameLower.contains(lower) || nameNormalized.contains(normalized);
+          })
           .take(5)
           .toList();
     });
   }
 
-  /// Busca el mejor lugar conocido que coincida con el texto (escrito o
-  /// dictado por voz) y lo selecciona automáticamente. Antes, con la voz,
-  /// el texto quedaba escrito pero nunca se "confirmaba" como destino a
-  /// menos que tocaras una sugerencia - por eso "agregaba el destino pero
-  /// no calculaba". Ahora se resuelve solo.
   Place? _resolvePlaceFromText(String text) {
     final lower = text.trim().toLowerCase();
     if (lower.isEmpty) return null;
+    final normalized = _normalize(lower);
+
+    final result = LugaresData.buscarLugar(text);
+    if (result != null) return result;
+
     for (final place in _allPlaces) {
-      if (place.name.toLowerCase() == lower) return place;
-    }
-    for (final place in _allPlaces) {
-      if (place.name.toLowerCase().contains(lower) || lower.contains(place.name.toLowerCase())) {
+      final nameLower = place.name.toLowerCase();
+      final nameNormalized = _normalize(nameLower);
+      if (nameLower == lower || nameNormalized == normalized) {
         return place;
       }
     }
+
+    for (final place in _allPlaces) {
+      final nameLower = place.name.toLowerCase();
+      final nameNormalized = _normalize(nameLower);
+      if (nameLower.contains(lower) || nameNormalized.contains(normalized)) {
+        return place;
+      }
+    }
+
     return null;
   }
 
@@ -108,20 +169,57 @@ class _HomeScreenState extends State<HomeScreen> {
       _destinationLabel = place.name;
       _destinationController.text = place.name;
       _suggestions = [];
+      _destinoPendiente = place;
+      _mostrarConfirmacion = true;
+      _esperandoToqueEnMapa = false;
     });
     _mapController.move(place.location, 14);
   }
 
   void _pickOnMap(LatLng point) {
+    if (_esperandoToqueEnMapa) {
+      final tempPlace = Place(
+        name: 'Punto en el mapa',
+        location: point,
+      );
+      setState(() {
+        _destination = point;
+        _destinationLabel = 'Punto en el mapa';
+        _destinationController.text = 'Punto en el mapa';
+        _suggestions = [];
+        _destinoPendiente = tempPlace;
+        _mostrarConfirmacion = true;
+        _esperandoToqueEnMapa = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📍 Destino marcado. Confirma si es correcto.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    if (_mostrarConfirmacion) return;
+
+    final tempPlace = Place(
+      name: 'Punto en el mapa',
+      location: point,
+    );
     setState(() {
       _destination = point;
-      _destinationLabel =
-          'Punto en el mapa (${point.latitude.toStringAsFixed(4)}, ${point.longitude.toStringAsFixed(4)})';
-      _destinationController.text = _destinationLabel;
+      _destinationLabel = 'Punto en el mapa';
+      _destinationController.text = 'Punto en el mapa';
       _suggestions = [];
+      _destinoPendiente = tempPlace;
+      _mostrarConfirmacion = true;
     });
+    _mapController.move(point, 14);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Destino elegido en el mapa.'), duration: Duration(seconds: 2)),
+      const SnackBar(
+        content: Text('📍 Destino marcado. Confirma si es correcto.'),
+        duration: Duration(seconds: 2),
+      ),
     );
   }
 
@@ -136,9 +234,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'El micrófono no está disponible. Revisa los permisos o escribe tu destino.',
-          ),
+          content: Text('El micrófono no está disponible. Revisa los permisos o escribe tu destino.'),
         ),
       );
       return;
@@ -153,28 +249,85 @@ class _HomeScreenState extends State<HomeScreen> {
         if (match != null) {
           _pickPlace(match);
         } else {
-          // No encontramos un lugar conocido: dejamos el texto tal cual
-          // para que "Calcular ruta" avise que todavía no hay datos para
-          // ese destino, en vez de quedarse pegado sin hacer nada.
-          setState(() {
-            _destinationLabel = text.trim();
-            _destination = null;
-            _suggestions = [];
-          });
+          _buscarConGeocoding(text.trim());
         }
       },
     );
   }
 
-  void _continue() {
-    // Si el usuario escribió pero nunca tocó una sugerencia ni dictó por
-    // voz, intentamos resolver el texto actual antes de rendirnos.
+  Future<void> _buscarConGeocoding(String query) async {
+    setState(() => _isCalculatingRoute = true);
+    final coords = await GeocodingService.obtenerCoordenadas(query);
+    if (!mounted) return;
+    setState(() => _isCalculatingRoute = false);
+
+    if (coords == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No pudimos encontrar "$query". Prueba con otro nombre o toca el mapa.'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    final place = Place(name: query, location: coords);
+    setState(() {
+      _destination = coords;
+      _destinationLabel = query;
+      _destinationController.text = query;
+      _destinoPendiente = place;
+      _mostrarConfirmacion = true;
+      _suggestions = [];
+      _esperandoToqueEnMapa = false;
+    });
+    _mapController.move(coords, 14);
+  }
+
+  void _confirmarDestino() {
+    if (_destinoPendiente == null) return;
+    setState(() {
+      _destination = _destinoPendiente!.location;
+      _destinationLabel = _destinoPendiente!.name;
+      _mostrarConfirmacion = false;
+      _esperandoToqueEnMapa = false;
+    });
+    _calcularRuta();
+  }
+
+  void _cancelarConfirmacion() {
+    setState(() {
+      _mostrarConfirmacion = false;
+      _destinoPendiente = null;
+      _esperandoToqueEnMapa = true;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('👆 Mantén presionado el mapa para elegir tu destino manualmente.'),
+        duration: Duration(seconds: 3),
+      ),
+    );
+  }
+
+  Future<void> _continue() async {
+    if (_mostrarConfirmacion) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Confirma o cancela el destino antes de continuar.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     if (_destinationLabel.isEmpty) {
       final match = _resolvePlaceFromText(_destinationController.text);
       if (match != null) {
         _pickPlace(match);
+        return;
       } else if (_destinationController.text.trim().isNotEmpty) {
-        _destinationLabel = _destinationController.text.trim();
+        await _buscarConGeocoding(_destinationController.text.trim());
+        return;
       }
     }
 
@@ -185,14 +338,34 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    final plan = TripPlannerService.planTrip(origin: _origin, destinationQuery: _destinationLabel);
+    if (_destination == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona un lugar válido en el mapa o en la búsqueda.')),
+      );
+      return;
+    }
 
-    if (plan == null) {
+    _calcularRuta();
+  }
+
+  void _calcularRuta() async {
+    setState(() => _isCalculatingRoute = true);
+
+    final opciones = await TripPlannerService.planTrip(
+      origin: _origin,
+      destination: _destination!,
+      destinationLabel: _destinationLabel,
+    );
+
+    if (!mounted) return;
+    setState(() => _isCalculatingRoute = false);
+
+    if (opciones.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Todavía no tenemos datos reales de ruta para "$_destinationLabel". '
-            'Por ahora prueba con "Plaza Avaroa" o "Sopocachi".',
+            'No encontramos una ruta para "$_destinationLabel". '
+            'Prueba con otro destino o intenta más tarde.',
           ),
           duration: const Duration(seconds: 4),
         ),
@@ -200,8 +373,187 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
+    if (opciones.length == 1) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => TripPlanScreen(plan: opciones.first)),
+      );
+      return;
+    }
+
+    _showRouteOptionsDialog(context, opciones);
+  }
+
+  void _showRouteOptionsDialog(BuildContext context, List<TripPlan> opciones) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          height: MediaQuery.of(context).size.height * 0.65,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Elige tu ruta preferida',
+                style: Theme.of(context).textTheme.titleLarge,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Selecciona una de las ${opciones.length} opciones disponibles',
+                style: const TextStyle(color: Colors.black54),
+              ),
+              const SizedBox(height: 16),
+              Expanded(
+                child: ListView.builder(
+                  itemCount: opciones.length,
+                  itemBuilder: (context, index) {
+                    final plan = opciones[index];
+                    return _RouteOptionCard(
+                      plan: plan,
+                      index: index + 1,
+                      badges: _badgesFor(plan, opciones),
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => TripPlanScreen(plan: plan)),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Cerrar'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// Calcula qué etiquetas le corresponden a cada opción, comparándola
+  /// contra el resto: la más rápida, la más barata y la que tiene menos
+  /// transbordos (menos tramos). Una misma opción puede tener varias
+  /// etiquetas a la vez si gana en más de una categoría.
+  List<String> _badgesFor(TripPlan plan, List<TripPlan> opciones) {
+    final badges = <String>[];
+
+    final fastestMin = opciones.map((p) => p.totalDurationMin).reduce((a, b) => a < b ? a : b);
+    final cheapestFare = opciones.map((p) => p.totalFareBs).reduce((a, b) => a < b ? a : b);
+    final fewestSegs = opciones.map((p) => p.segments.length).reduce((a, b) => a < b ? a : b);
+
+    if (plan.totalDurationMin == fastestMin) badges.add('⚡ Más rápida');
+    if (plan.totalFareBs == cheapestFare) badges.add('💰 Más económica');
+    if (plan.segments.length == fewestSegs) badges.add('🔀 Menos transbordos');
+    return badges;
+  }
+
+  Widget _buildConfirmDialog() {
+    if (!_mostrarConfirmacion || _destinoPendiente == null) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 130, // Ajustado para que no se superponga con los botones
+      left: 16,
+      right: 16,
+      child: Card(
+        elevation: 6,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.red, size: 28),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '¿Ir a "${_destinoPendiente!.name}"?',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '(${_destinoPendiente!.location.latitude.toStringAsFixed(4)}, ${_destinoPendiente!.location.longitude.toStringAsFixed(4)})',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton(
+                      onPressed: _cancelarConfirmacion,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Colors.red,
+                        side: const BorderSide(color: Colors.red),
+                      ),
+                      child: const Text('❌ No, corregir'),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: _confirmarDestino,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.green,
+                        foregroundColor: Colors.white,
+                      ),
+                      child: const Text('✅ Sí, ir aquí'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterButton({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required VoidCallback onTap,
+    Color? color,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        decoration: BoxDecoration(
+          color: isActive ? (color ?? Colors.blue).withValues(alpha: 0.15) : Colors.transparent,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: 16,
+              color: isActive ? (color ?? Colors.blue) : Colors.grey,
+            ),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+                color: isActive ? (color ?? Colors.blue) : Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -216,7 +568,66 @@ class _HomeScreenState extends State<HomeScreen> {
             originMarker: _origin,
             destinationMarker: _destination,
             onLongPressPick: _pickOnMap,
+            showTelefericoNetwork: _showTeleferico,
+            showPumaNetwork: _showPuma,
+            showMinibusNetwork: _showMinibus,
           ),
+          // ============================================================
+          // BARRA DE FILTROS DE CAPAS
+          // ============================================================
+          Positioned(
+            top: 12,
+            left: 16,
+            right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.95),
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: [
+                  _buildFilterButton(
+                    icon: Icons.layers,
+                    label: 'Todos',
+                    isActive: _showTeleferico && _showPuma && _showMinibus,
+                    onTap: _showAllLayers,
+                    color: Colors.black87,
+                  ),
+                  _buildFilterButton(
+                    icon: Icons.cable,
+                    label: 'Teleférico',
+                    isActive: _showTeleferico,
+                    onTap: _toggleTeleferico,
+                    color: Colors.blue,
+                  ),
+                  _buildFilterButton(
+                    icon: Icons.directions_bus,
+                    label: 'Puma',
+                    isActive: _showPuma,
+                    onTap: _togglePuma,
+                    color: Colors.purple,
+                  ),
+                  _buildFilterButton(
+                    icon: Icons.airport_shuttle,
+                    label: 'Minibús',
+                    isActive: _showMinibus,
+                    onTap: _toggleMinibus,
+                    color: Colors.orange,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          _buildConfirmDialog(),
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(12),
@@ -228,6 +639,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.accessibility_new_rounded, color: Colors.black87),
                       tooltip: 'Accesibilidad',
                       onPressed: () => _showAccessibilitySheet(context),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: IconButton(
+                      icon: const Icon(Icons.smart_toy_rounded, color: Colors.black87),
+                      tooltip: 'Asistente',
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const ChatScreen()),
+                        );
+                      },
                     ),
                   ),
                   const Spacer(),
@@ -260,7 +684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 4)),
+                    BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 4)),
                   ],
                 ),
                 child: Column(
@@ -285,10 +709,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             onChanged: _onSearchChanged,
                             onSubmitted: (text) {
                               final match = _resolvePlaceFromText(text);
-                              if (match != null) _pickPlace(match);
+                              if (match != null) {
+                                _pickPlace(match);
+                              } else if (text.trim().isNotEmpty) {
+                                _buscarConGeocoding(text.trim());
+                              }
                             },
                             decoration: InputDecoration(
-                              hintText: 'Ej: Plaza Avaroa, Miraflores...',
+                              hintText: 'Ej: Plaza Avaroa, Río Seco, Calle 15...',
                               prefixIcon: const Icon(Icons.search_rounded),
                               filled: true,
                               fillColor: const Color(0xFFF2F4F3),
@@ -331,9 +759,15 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     const SizedBox(height: 12),
                     ElevatedButton.icon(
-                      onPressed: _continue,
-                      icon: const Icon(Icons.route_rounded),
-                      label: const Text('Calcular ruta'),
+                      onPressed: (_isCalculatingRoute || _mostrarConfirmacion) ? null : _continue,
+                      icon: _isCalculatingRoute
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                            )
+                          : const Icon(Icons.route_rounded),
+                      label: Text(_isCalculatingRoute ? 'Calculando por calles reales...' : 'Calcular ruta'),
                     ),
                   ],
                 ),
@@ -380,3 +814,89 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
+class _RouteOptionCard extends StatelessWidget {
+  final TripPlan plan;
+  final int index;
+  final List<String> badges;
+  final VoidCallback onTap;
+
+  const _RouteOptionCard({
+    required this.plan,
+    required this.index,
+    required this.badges,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // Modos de transporte usados en esta opción, en orden, sin repetir
+    // seguidos (ej: caminar -> teleférico -> minibús).
+    final modes = <TransportMode>[];
+    for (final segment in plan.segments) {
+      if (modes.isEmpty || modes.last != segment.mode) modes.add(segment.mode);
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (badges.isNotEmpty)
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: badges
+                      .map((b) => Chip(
+                            label: Text(b, style: const TextStyle(fontSize: 11)),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: Colors.green.shade50,
+                          ))
+                      .toList(),
+                ),
+              if (badges.isNotEmpty) const SizedBox(height: 8),
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    child: Text('$index', style: const TextStyle(color: Colors.white)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${plan.totalDurationMin} min · Bs. ${plan.totalFareBs.toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            for (final mode in modes) ...[
+                              Icon(mode.icon, size: 16, color: mode.color),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              '${plan.segments.length} tramos',
+                              style: const TextStyle(fontSize: 12, color: Colors.black54),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

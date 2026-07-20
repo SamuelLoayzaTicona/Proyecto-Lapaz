@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
+import '../data/pumakatari_data.dart';
+import '../data/minibus_data.dart';
 
-/// Mapa real de La Paz/El Alto (tiles de OpenStreetMap, sin necesidad de
-/// API key de Google). Muestra las líneas de Teleférico dibujadas con sus
-/// colores reales y permite tocar-y-mantener para elegir el destino, igual
-/// que en la referencia "Ahora seleccione su destino... presionando por
-/// unos segundos".
+/// Mapa real de La Paz/El Alto (tiles de OpenStreetMap).
+/// Muestra las líneas de Teleférico, PumaKatari y Minibús dibujadas con sus colores.
 class RealCityMap extends StatelessWidget {
   final LatLng center;
   final LatLng? originMarker;
@@ -15,16 +14,11 @@ class RealCityMap extends StatelessWidget {
   final void Function(LatLng)? onLongPressPick;
   final MapController? controller;
 
-  /// Rutas adicionales a dibujar encima del mapa base (ej: la ruta del
-  /// viaje calculado, o la ruta con el tramo de desvío en rojo).
   final List<Polyline> extraPolylines;
-
-  /// Marcadores adicionales (ej: la posición GPS en vivo del usuario).
   final List<Marker> extraMarkers;
-
-  /// Si es false, no dibuja las líneas de Teleférico de fondo (útil en la
-  /// pantalla de viaje en vivo para no saturar el mapa).
   final bool showTelefericoNetwork;
+  final bool showPumaNetwork;
+  final bool showMinibusNetwork;
 
   const RealCityMap({
     super.key,
@@ -36,6 +30,8 @@ class RealCityMap extends StatelessWidget {
     this.extraPolylines = const [],
     this.extraMarkers = const [],
     this.showTelefericoNetwork = true,
+    this.showPumaNetwork = true,
+    this.showMinibusNetwork = true,
   });
 
   @override
@@ -55,7 +51,10 @@ class RealCityMap extends StatelessWidget {
           userAgentPackageName: 'bo.lapaz.rutasegura',
           maxZoom: 19,
         ),
-        // Líneas de Teleférico dibujadas con sus colores reales.
+
+        // ============================================================
+        // LÍNEAS DE TELEFÉRICO
+        // ============================================================
         if (showTelefericoNetwork)
           PolylineLayer(
             polylines: TelefericoData.allLines
@@ -68,9 +67,55 @@ class RealCityMap extends StatelessWidget {
                 )
                 .toList(),
           ),
+
+        // ============================================================
+        // LÍNEAS DE PUMAKATARI
+        // ============================================================
+        if (showPumaNetwork)
+          PolylineLayer(
+            polylines: PumaKatariData.allRoutes
+                .expand((route) => [
+                      // Ruta IDA - línea sólida
+                      Polyline(
+                        points: route.stops.map((s) => s.location).toList(),
+                        color: _getPumaColor(route.id, isReturn: false),
+                        strokeWidth: 4,
+                      ),
+                      // Ruta VUELTA - línea más clara
+                      Polyline(
+                        points: route.returnStops.map((s) => s.location).toList(),
+                        color: _getPumaColor(route.id, isReturn: true),
+                        strokeWidth: 3,
+                      ),
+                    ])
+                .toList(),
+          ),
+
+        // ============================================================
+        // LÍNEAS DE MINIBÚS (NUEVO)
+        // ============================================================
+        if (showMinibusNetwork)
+          PolylineLayer(
+            polylines: MinibusData.allRoutes
+                .map((route) => Polyline(
+                      points: route.points,
+                      color: _getMinibusColor(route.id),
+                      strokeWidth: 3,
+                    ))
+                .toList(),
+          ),
+
+        // ============================================================
+        // POLILINEAS ADICIONALES
+        // ============================================================
         if (extraPolylines.isNotEmpty) PolylineLayer(polylines: extraPolylines),
+
+        // ============================================================
+        // MARCADORES
+        // ============================================================
         MarkerLayer(
           markers: [
+            // Marcadores de Teleférico
             if (showTelefericoNetwork)
               for (final line in TelefericoData.allLines)
                 for (final station in line.stations)
@@ -86,6 +131,42 @@ class RealCityMap extends StatelessWidget {
                       ),
                     ),
                   ),
+
+            // Marcadores de PumaKatari (paradas principales)
+            if (showPumaNetwork)
+              for (final route in PumaKatariData.allRoutes)
+                for (final stop in route.stops)
+                  Marker(
+                    point: stop.location,
+                    width: 8,
+                    height: 8,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _getPumaColor(route.id, isReturn: false),
+                        border: Border.all(color: Colors.white, width: 1.0),
+                      ),
+                    ),
+                  ),
+
+            // Marcadores de Minibús (puntos de referencia)
+            if (showMinibusNetwork)
+              for (final route in MinibusData.allRoutes)
+                for (final stop in route.stops)
+                  Marker(
+                    point: stop.location,
+                    width: 6,
+                    height: 6,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: _getMinibusColor(route.id),
+                        border: Border.all(color: Colors.white, width: 1.0),
+                      ),
+                    ),
+                  ),
+
+            // Marcador de origen
             if (originMarker != null)
               Marker(
                 point: originMarker!,
@@ -93,6 +174,8 @@ class RealCityMap extends StatelessWidget {
                 height: 40,
                 child: const Icon(Icons.my_location_rounded, color: Colors.blue, size: 32),
               ),
+
+            // Marcador de destino
             if (destinationMarker != null)
               Marker(
                 point: destinationMarker!,
@@ -101,10 +184,15 @@ class RealCityMap extends StatelessWidget {
                 alignment: Alignment.topCenter,
                 child: const Icon(Icons.location_on_rounded, color: Colors.red, size: 40),
               ),
+
             ...extraMarkers,
           ],
         ),
-        RichAttributionWidget(
+
+        // ============================================================
+        // LEYENDA
+        // ============================================================
+        const RichAttributionWidget(
           attributions: [
             TextSourceAttribution('© OpenStreetMap contributors'),
           ],
@@ -116,5 +204,31 @@ class RealCityMap extends StatelessWidget {
   Color _colorFromHex(String hex) {
     final value = int.parse(hex.replaceFirst('#', ''), radix: 16);
     return Color(0xFF000000 | value);
+  }
+
+  Color _getPumaColor(String routeId, {required bool isReturn}) {
+    switch (routeId) {
+      case 'PK_ACHUMANI':
+        return isReturn ? const Color(0xFF9C27B0) : const Color(0xFF7B1FA2);
+      case 'PK_CHASQUIPAMPA':
+        return isReturn ? const Color(0xFFFF6F00) : const Color(0xFFE65100);
+      default:
+        return isReturn ? const Color(0xFF546E7A) : const Color(0xFF37474F);
+    }
+  }
+
+  Color _getMinibusColor(String routeId) {
+    switch (routeId) {
+      case 'MB_RIOSECO_CEJA':
+        return const Color(0xFF9B59B6); // Morado
+      case 'MB_CEJA_6AGOSTO':
+        return const Color(0xFFF39C12); // Naranja
+      case 'MB_PEREZ_COTACOTA':
+        return const Color(0xFF2C3E50); // Azul oscuro
+      case 'MB_CEJA_TELEFERICO':
+        return const Color(0xFF27AE60); // Verde
+      default:
+        return const Color(0xFF7F8C8D); // Gris
+    }
   }
 }

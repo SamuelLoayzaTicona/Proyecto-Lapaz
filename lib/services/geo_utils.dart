@@ -5,7 +5,7 @@ import 'package:latlong2/latlong.dart';
 class GeoUtils {
   GeoUtils._();
 
-  static final Distance _distance = const Distance();
+  static const Distance _distance = Distance();
 
   /// Convierte una lista de puntos "de esquina a esquina" en una lista más
   /// densa, interpolando puntos intermedios. Esto hace que la comparación
