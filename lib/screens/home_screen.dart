@@ -412,6 +412,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     return _RouteOptionCard(
                       plan: plan,
                       index: index + 1,
+                      badges: _badgesFor(plan, opciones),
                       onTap: () {
                         Navigator.of(context).pop();
                         Navigator.of(context).push(
@@ -432,6 +433,23 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+  /// Calcula qué etiquetas le corresponden a cada opción, comparándola
+  /// contra el resto: la más rápida, la más barata y la que tiene menos
+  /// transbordos (menos tramos). Una misma opción puede tener varias
+  /// etiquetas a la vez si gana en más de una categoría.
+  List<String> _badgesFor(TripPlan plan, List<TripPlan> opciones) {
+    final badges = <String>[];
+
+    final fastestMin = opciones.map((p) => p.totalDurationMin).reduce((a, b) => a < b ? a : b);
+    final cheapestFare = opciones.map((p) => p.totalFareBs).reduce((a, b) => a < b ? a : b);
+    final fewestSegs = opciones.map((p) => p.segments.length).reduce((a, b) => a < b ? a : b);
+
+    if (plan.totalDurationMin == fastestMin) badges.add('⚡ Más rápida');
+    if (plan.totalFareBs == cheapestFare) badges.add('💰 Más económica');
+    if (plan.segments.length == fewestSegs) badges.add('🔀 Menos transbordos');
+    return badges;
   }
 
   Widget _buildConfirmDialog() {
@@ -786,27 +804,85 @@ class _HomeScreenState extends State<HomeScreen> {
 class _RouteOptionCard extends StatelessWidget {
   final TripPlan plan;
   final int index;
+  final List<String> badges;
   final VoidCallback onTap;
 
   const _RouteOptionCard({
     required this.plan,
     required this.index,
+    required this.badges,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Modos de transporte usados en esta opción, en orden, sin repetir
+    // seguidos (ej: caminar -> teleférico -> minibús).
+    final modes = <TransportMode>[];
+    for (final segment in plan.segments) {
+      if (modes.isEmpty || modes.last != segment.mode) modes.add(segment.mode);
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          child: Text('$index', style: const TextStyle(color: Colors.white)),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (badges.isNotEmpty)
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: badges
+                      .map((b) => Chip(
+                            label: Text(b, style: const TextStyle(fontSize: 11)),
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact,
+                            backgroundColor: Colors.green.shade50,
+                          ))
+                      .toList(),
+                ),
+              if (badges.isNotEmpty) const SizedBox(height: 8),
+              Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    child: Text('$index', style: const TextStyle(color: Colors.white)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '${plan.totalDurationMin} min · Bs. ${plan.totalFareBs.toStringAsFixed(2)}',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            for (final mode in modes) ...[
+                              Icon(mode.icon, size: 16, color: mode.color),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              '${plan.segments.length} tramos',
+                              style: const TextStyle(fontSize: 12, color: Colors.black54),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+            ],
+          ),
         ),
-        title: Text('${plan.totalDurationMin} min · Bs. ${plan.totalFareBs.toStringAsFixed(2)}'),
-        subtitle: Text('${plan.segments.length} tramos · ${plan.totalDurationMin} min'),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
       ),
     );
   }

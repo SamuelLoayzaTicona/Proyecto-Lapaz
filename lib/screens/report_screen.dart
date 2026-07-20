@@ -17,6 +17,19 @@ class _ReportScreenState extends State<ReportScreen> {
   final _descriptionController = TextEditingController();
   bool _isSubmitting = false;
 
+  /// Lista de sindicatos a mostrar. El planificador de rutas a veces manda
+  /// valores que no están en la lista fija de PilotZoneData (ej. "Por
+  /// confirmar", "Cualquier sindicato"), y el DropdownButtonFormField de
+  /// Flutter truena si el valor seleccionado no está EXACTAMENTE entre sus
+  /// opciones. Por eso agregamos aquí cualquier valor prellenado que falte.
+  late final List<String> _syndicateOptions = [
+    if (widget.prefilledSyndicate != null &&
+        widget.prefilledSyndicate!.trim().isNotEmpty &&
+        !PilotZoneData.syndicates.contains(widget.prefilledSyndicate))
+      widget.prefilledSyndicate!,
+    ...PilotZoneData.syndicates,
+  ];
+
   @override
   void initState() {
     super.initState();
@@ -82,7 +95,7 @@ class _ReportScreenState extends State<ReportScreen> {
             DropdownButtonFormField<String>(
               value: _selectedSyndicate,
               decoration: const InputDecoration(labelText: 'Sindicato'),
-              items: PilotZoneData.syndicates
+              items: _syndicateOptions
                   .map((s) => DropdownMenuItem(value: s, child: Text(s)))
                   .toList(),
               onChanged: (value) => setState(() => _selectedSyndicate = value),

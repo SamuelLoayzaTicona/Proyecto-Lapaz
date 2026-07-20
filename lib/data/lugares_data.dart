@@ -35,25 +35,24 @@ class LugaresData {
     TelefericoData.rioSeco,
   ];
 
-  /// Busca un lugar por su nombre (coincidencia exacta primero, luego parcial)
+  /// Busca un lugar por su nombre. Es ESTRICTO a propósito: solo acepta
+  /// una coincidencia parcial cuando es ÚNICA - así evitamos que "Cota
+  /// Cota" termine sugiriendo un lugar de "La Ceja" sin relación real.
   static Place? buscarLugar(String query) {
     final lower = query.toLowerCase().trim();
     if (lower.isEmpty) return null;
 
-    // 1. Coincidencia exacta
     for (final place in todosLosLugares) {
       if (place.name.toLowerCase() == lower) return place;
     }
 
-    // 2. Coincidencia parcial (que contenga la consulta)
-    for (final place in todosLosLugares) {
-      if (place.name.toLowerCase().contains(lower)) return place;
-    }
+    final startsWithMatches =
+        todosLosLugares.where((p) => p.name.toLowerCase().startsWith(lower)).toList();
+    if (startsWithMatches.length == 1) return startsWithMatches.first;
 
-    // 3. Coincidencia parcial inversa (que la consulta contenga el nombre)
-    for (final place in todosLosLugares) {
-      if (lower.contains(place.name.toLowerCase())) return place;
-    }
+    final containsMatches =
+        todosLosLugares.where((p) => p.name.toLowerCase().contains(lower)).toList();
+    if (containsMatches.length == 1) return containsMatches.first;
 
     return null;
   }

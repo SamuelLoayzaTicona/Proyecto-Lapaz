@@ -1676,6 +1676,17 @@ class TripPlannerService {
 // CLASE AUXILIAR: RED DE TELEFÉRICO
 // ============================================================
 
+// ============================================================
+// CLASE AUXILIAR: RED DE TELEFÉRICO (grafo completo + Dijkstra)
+// ============================================================
+//
+// ANTES: findPath() solo probaba 1 línea directa o 1 transbordo. Si el
+// viaje real necesitaba 2+ transbordos, devolvía null y la app se quedaba
+// solo con la opción genérica de minibús directo.
+//
+// AHORA: toda la red es un grafo (nodo = estación, arista = un salto
+// dentro de una línea) y Dijkstra encuentra el mejor camino sin importar
+// cuántos transbordos necesite.
 class TelefericoNetwork {
   static Place nearestStation(LatLng point) {
     Place? nearest;
@@ -1710,65 +1721,105 @@ class TelefericoNetwork {
   }
 
   static List<_TelefericoPathStep>? findPath(String from, String to) {
-    for (final line in TelefericoData.allLines) {
-      final stations = line.stations;
-      final fromIndex = stations.indexWhere((s) => s.name == from);
-      final toIndex = stations.indexWhere((s) => s.name == to);
+    if (from == to) return [];
 
-      if (fromIndex != -1 && toIndex != -1) {
-        final start = fromIndex < toIndex ? fromIndex : toIndex;
-        final end = fromIndex < toIndex ? toIndex : fromIndex;
+    final distances = <String, double>{from: 0};
+    final previous = <String, _TelefericoEdge>{};
+    final visited = <String>{};
+    final frontier = <String>{from};
 
-        return [
-          _TelefericoPathStep(
-            line: line,
-            stations: stations.sublist(start, end + 1),
-          ),
-        ];
-      }
-    }
+    while (frontier.isNotEmpty) {
+      final current = frontier.reduce(
+        (a, b) => (distances[a] ?? double.infinity) < (distances[b] ?? double.infinity) ? a : b,
+      );
+      frontier.remove(current);
+      if (!visited.add(current)) continue;
+      if (current == to) break;
 
-    // Buscar transbordo
-    for (final line1 in TelefericoData.allLines) {
-      for (final line2 in TelefericoData.allLines) {
-        if (line1.name == line2.name) continue;
-
-        final sharedStations = line1.stations
-            .where((s) => line2.stations.any((s2) => s2.name == s.name))
-            .toList();
-
-        if (sharedStations.isNotEmpty) {
-          final shared = sharedStations.first;
-
-          final fromIndex1 = line1.stations.indexWhere((s) => s.name == from);
-          final toIndex1 = line1.stations.indexWhere((s) => s.name == shared.name);
-
-          final fromIndex2 = line2.stations.indexWhere((s) => s.name == shared.name);
-          final toIndex2 = line2.stations.indexWhere((s) => s.name == to);
-
-          if (fromIndex1 != -1 && toIndex1 != -1 && fromIndex2 != -1 && toIndex2 != -1) {
-            final start1 = fromIndex1 < toIndex1 ? fromIndex1 : toIndex1;
-            final end1 = fromIndex1 < toIndex1 ? toIndex1 : fromIndex1;
-            final start2 = fromIndex2 < toIndex2 ? fromIndex2 : toIndex2;
-            final end2 = fromIndex2 < toIndex2 ? toIndex2 : fromIndex2;
-
-            return [
-              _TelefericoPathStep(
-                line: line1,
-                stations: line1.stations.sublist(start1, end1 + 1),
-              ),
-              _TelefericoPathStep(
-                line: line2,
-                stations: line2.stations.sublist(start2, end2 + 1),
-              ),
-            ];
-          }
+      for (final edge in _edgesFrom(current)) {
+        final newDist = (distances[current] ?? double.infinity) + edge.weightMinutes;
+        if (newDist < (distances[edge.toStation] ?? double.infinity)) {
+          distances[edge.toStation] = newDist;
+          previous[edge.toStation] = edge;
+          frontier.add(edge.toStation);
         }
       }
     }
 
-    return null;
+    if (!distances.containsKey(to)) return null;
+
+    final edgesUsed = <_TelefericoEdge>[];
+    var cursor = to;
+    while (cursor != from) {
+      final edge = previous[cursor];
+      if (edge == null) return null;
+      edgesUsed.add(edge);
+      cursor = edge.fromStation;
+    }
+    final orderedEdges = edgesUsed.reversed.toList();
+
+    final steps = <_TelefericoPathStep>[];
+    for (final edge in orderedEdges) {
+      if (steps.isNotEmpty && steps.last.line.name == edge.line.name) {
+        steps.last.stations.add(_stationByName(edge.toStation));
+      } else {
+        steps.add(_TelefericoPathStep(
+          line: edge.line,
+          stations: [_stationByName(edge.fromStation), _stationByName(edge.toStation)],
+        ));
+      }
+    }
+    return steps;
   }
+
+  static Place _stationByName(String name) {
+    for (final line in TelefericoData.allLines) {
+      for (final station in line.stations) {
+        if (station.name == name) return station;
+      }
+    }
+    throw StateError('Estación de Teleférico no encontrada: $name');
+  }
+
+  static List<_TelefericoEdge> _edgesFrom(String stationName) {
+    final edges = <_TelefericoEdge>[];
+    for (final line in TelefericoData.allLines) {
+      final index = line.stations.indexWhere((s) => s.name == stationName);
+      if (index == -1) continue;
+      final minutesPerHop = line.durationMin / (line.stations.length - 1);
+      if (index > 0) {
+        edges.add(_TelefericoEdge(
+          fromStation: stationName,
+          toStation: line.stations[index - 1].name,
+          line: line,
+          weightMinutes: minutesPerHop,
+        ));
+      }
+      if (index < line.stations.length - 1) {
+        edges.add(_TelefericoEdge(
+          fromStation: stationName,
+          toStation: line.stations[index + 1].name,
+          line: line,
+          weightMinutes: minutesPerHop,
+        ));
+      }
+    }
+    return edges;
+  }
+}
+
+class _TelefericoEdge {
+  final String fromStation;
+  final String toStation;
+  final TelefericoLine line;
+  final double weightMinutes;
+
+  _TelefericoEdge({
+    required this.fromStation,
+    required this.toStation,
+    required this.line,
+    required this.weightMinutes,
+  });
 }
 
 class _TelefericoPathStep {
