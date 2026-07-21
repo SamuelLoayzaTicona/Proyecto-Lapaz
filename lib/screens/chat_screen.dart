@@ -83,9 +83,31 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<String> _getBotResponse(String userText) async {
     try {
       return await AzureFoundryService.getReply(userText);
-    } catch (e) {
-      return 'No pude contactar a Azure Foundry. Revisa tu configuración de .env y el recurso de Azure. Error: $e';
+    } catch (_) {
+      return _getOfflineReply(userText);
     }
+  }
+
+  String _getOfflineReply(String userText) {
+    final normalized = userText.toLowerCase();
+
+    if (normalized.contains('ruta') || normalized.contains('camino') || normalized.contains('dirección')) {
+      return 'Revisa las rutas principales hacia tu destino, sal con tiempo extra y evita calles cerradas o con obras.';
+    }
+    if (normalized.contains('horario') || normalized.contains('tiempo') || normalized.contains('llega')) {
+      return 'Los horarios pueden variar en horas punta. Sal temprano y considera transporte frecuente si vas al centro.';
+    }
+    if (normalized.contains('seguro') || normalized.contains('emergencia') || normalized.contains('policía')) {
+      return 'Mantén tu teléfono a mano, comparte tu ubicación con alguien de confianza y usa rutas bien iluminadas.';
+    }
+    if (normalized.contains('transporte') || normalized.contains('bus') || normalized.contains('minibus') || normalized.contains('pumakatari')) {
+      return 'Combina transporte público con servicios conocidos y revisa el estado del servicio antes de salir.';
+    }
+    if (normalized.contains('teleferico') || normalized.contains('teleférico')) {
+      return 'El teleférico es rápido para cruzar la ciudad, pero revisa si hay cierres temporales antes de planificar tu viaje.';
+    }
+
+    return 'Estoy sin conexión al asistente principal. Te puedo ayudar con recomendaciones básicas de rutas, horarios y seguridad mientras vuelve el servicio.';
   }
 
   @override

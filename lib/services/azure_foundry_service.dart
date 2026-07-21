@@ -4,14 +4,26 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:http/http.dart' as http;
 
 class AzureFoundryService {
+  static bool _isPlaceholder(String? value) {
+    if (value == null) return true;
+    final normalized = value.trim().toLowerCase();
+    return normalized.isEmpty ||
+        normalized == 'confidencial' ||
+        normalized == '<tu-recurso>' ||
+        normalized == '<tu-api-key>' ||
+        normalized == '<tu-deployment-name>' ||
+        normalized.contains('your-') ||
+        normalized.contains('example');
+  }
+
   static String? _getValue(String key, {String? fallbackKey}) {
     final fromDotEnv = dotenv.env[key];
-    if (fromDotEnv != null && fromDotEnv.trim().isNotEmpty) {
+    if (fromDotEnv != null && fromDotEnv.trim().isNotEmpty && !_isPlaceholder(fromDotEnv)) {
       return fromDotEnv.trim();
     }
     if (fallbackKey != null) {
       final fallback = dotenv.env[fallbackKey];
-      if (fallback != null && fallback.trim().isNotEmpty) {
+      if (fallback != null && fallback.trim().isNotEmpty && !_isPlaceholder(fallback)) {
         return fallback.trim();
       }
     }
@@ -45,9 +57,9 @@ class AzureFoundryService {
     final apiKeyValue = values['AZURE_AI_FOUNDRY_API_KEY'] ?? values['AZURE_OPENAI_API_KEY'];
     final deploymentValue = values['AZURE_AI_FOUNDRY_DEPLOYMENT'] ?? values['AZURE_OPENAI_DEPLOYMENT'];
 
-    return (endpointValue?.isNotEmpty ?? false) &&
-        (apiKeyValue?.isNotEmpty ?? false) &&
-        (deploymentValue?.isNotEmpty ?? false);
+    return !_isPlaceholder(endpointValue) &&
+        !_isPlaceholder(apiKeyValue) &&
+        !_isPlaceholder(deploymentValue);
   }
 
   static Future<String> getReply(String prompt) async {
@@ -60,8 +72,9 @@ class AzureFoundryService {
     }
 
     final normalizedEndpoint = currentEndpoint.trim().replaceAll(RegExp(r'/+$'), '');
+    final endpointWithoutPath = normalizedEndpoint.replaceAll(RegExp(r'/openai/?$'), '');
     final uri = Uri.parse(
-      '$normalizedEndpoint/openai/deployments/$currentDeployment/chat/completions?api-version=$apiVersion',
+      '$endpointWithoutPath/openai/deployments/$currentDeployment/chat/completions?api-version=$apiVersion',
     );
 
     final response = await http

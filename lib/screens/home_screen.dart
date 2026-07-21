@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import '../data/teleferico_data.dart';
+import '../data/pumakatari_data.dart';
 import '../data/lugares_data.dart';
 import '../models/place.dart';
 import '../models/transport_models.dart';
@@ -44,6 +45,12 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _showPuma = true;
   bool _showMinibus = true;
 
+  // ============================================================
+  // NUEVO: MODO DE SELECCIÓN DE ORIGEN
+  // ============================================================
+  bool _modoOrigen = false;
+  LatLng? _origenManual;
+
   late final List<Place> _allPlaces = LugaresData.allPlaces;
 
   // ============================================================
@@ -75,6 +82,30 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  // ============================================================
+  // NUEVO: ACTIVAR MODO ORIGEN
+  // ============================================================
+  void _activarModoOrigen() {
+    setState(() {
+      _modoOrigen = !_modoOrigen;
+      if (_modoOrigen) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('👆 Toca el mapa para marcar tu ORIGEN.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('📍 Modo origen desactivado.'),
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -95,6 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _origin = LatLng(position.latitude, position.longitude);
         _isLocating = false;
+        _origenManual = null;
       });
       _mapController.move(_origin, 14);
     } catch (_) {
@@ -177,6 +209,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _pickOnMap(LatLng point) {
+    if (_modoOrigen) {
+      setState(() {
+        _origenManual = point;
+        _modoOrigen = false;
+        _origin = point;
+      });
+      _mapController.move(point, 14);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('📍 Origen marcado en el mapa.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
     if (_esperandoToqueEnMapa) {
       final tempPlace = Place(
         name: 'Punto en el mapa',
@@ -351,8 +399,10 @@ class _HomeScreenState extends State<HomeScreen> {
   void _calcularRuta() async {
     setState(() => _isCalculatingRoute = true);
 
+    final originToUse = _origenManual ?? _origin;
+
     final opciones = await TripPlannerService.planTrip(
-      origin: _origin,
+      origin: originToUse,
       destination: _destination!,
       destinationLabel: _destinationLabel,
     );
@@ -435,10 +485,6 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  /// Calcula qué etiquetas le corresponden a cada opción, comparándola
-  /// contra el resto: la más rápida, la más barata y la que tiene menos
-  /// transbordos (menos tramos). Una misma opción puede tener varias
-  /// etiquetas a la vez si gana en más de una categoría.
   List<String> _badgesFor(TripPlan plan, List<TripPlan> opciones) {
     final badges = <String>[];
 
@@ -456,7 +502,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_mostrarConfirmacion || _destinoPendiente == null) return const SizedBox.shrink();
 
     return Positioned(
-      top: 130, // Ajustado para que no se superponga con los botones
+      top: 130,
       left: 16,
       right: 16,
       child: Card(
@@ -532,7 +578,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
         decoration: BoxDecoration(
-          color: isActive ? (color ?? Colors.blue).withValues(alpha: 0.15) : Colors.transparent,
+          color: isActive ? (color ?? Colors.blue).withOpacity(0.15) : Colors.transparent,
           borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
@@ -559,13 +605,15 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final originToShow = _origenManual ?? _origin;
+
     return Scaffold(
       body: Stack(
         children: [
           RealCityMap(
             controller: _mapController,
-            center: _origin,
-            originMarker: _origin,
+            center: originToShow,
+            originMarker: originToShow,
             destinationMarker: _destination,
             onLongPressPick: _pickOnMap,
             showTelefericoNetwork: _showTeleferico,
@@ -582,11 +630,11 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.95),
+                color: Colors.white.withOpacity(0.95),
                 borderRadius: BorderRadius.circular(12),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.1),
+                    color: Colors.black.withOpacity(0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -642,6 +690,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // ============================================================
+                  // BOTÓN CHAT (Asistente)
+                  // ============================================================
                   CircleAvatar(
                     backgroundColor: Colors.white,
                     child: IconButton(
@@ -655,6 +706,23 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   ),
                   const Spacer(),
+                  // ============================================================
+                  // BOTÓN PARA MARCAR ORIGEN EN EL MAPA
+                  // ============================================================
+                  FloatingActionButton.small(
+                    heroTag: 'origin_pick',
+                    onPressed: _activarModoOrigen,
+                    backgroundColor: _modoOrigen ? Colors.green : Colors.white,
+                    tooltip: 'Marcar origen en el mapa',
+                    child: Icon(
+                      Icons.add_location,
+                      color: _modoOrigen ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // ============================================================
+                  // BOTÓN PARA OBTENER UBICACIÓN ACTUAL (GPS)
+                  // ============================================================
                   FloatingActionButton.small(
                     heroTag: 'locate',
                     onPressed: _detectLocation,
@@ -665,7 +733,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             height: 16,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Icon(Icons.my_location_rounded, color: Colors.black87),
+                        : const Icon(Icons.gps_fixed, color: Colors.black87),
                   ),
                 ],
               ),
@@ -684,20 +752,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(20),
                   boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 16, offset: const Offset(0, 4)),
+                    BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 16, offset: const Offset(0, 4)),
                   ],
                 ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '¿A dónde quieres ir?',
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '¿A dónde quieres ir?',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        if (_modoOrigen)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Text(
+                              'Origen',
+                              style: TextStyle(color: Colors.white, fontSize: 10),
+                            ),
+                          ),
+                      ],
                     ),
                     const SizedBox(height: 4),
                     const Text(
-                      'Escribe, usa el micrófono o mantén presionado un punto del mapa.',
+                      'Escribe, usa el micrófono o toca el mapa.',
                       style: TextStyle(color: Colors.black54, fontSize: 12.5),
                     ),
                     const SizedBox(height: 12),
@@ -829,8 +915,6 @@ class _RouteOptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Modos de transporte usados en esta opción, en orden, sin repetir
-    // seguidos (ej: caminar -> teleférico -> minibús).
     final modes = <TransportMode>[];
     for (final segment in plan.segments) {
       if (modes.isEmpty || modes.last != segment.mode) modes.add(segment.mode);
